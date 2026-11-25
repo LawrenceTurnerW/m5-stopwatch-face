@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StopWatch 着せ替え</title>
+<style>
+  /* 色はすべてテーマカラーから決まる (applyThemeToPage が上書きする) */
+  :root {
+    --bg: #101216; --card: #1a1d24; --text: #e8eaf0; --sub: #9aa1b0; --accent: #5cc8ff; --accent2: #ffa500;
+    --line: color-mix(in srgb, var(--sub) 28%, var(--card));
+    --field: color-mix(in srgb, var(--bg) 70%, var(--card));
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.6 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 14px 24px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 18px; margin: 0; }
+  #install { color: var(--sub); font-size: 13px; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  nav { display: flex; gap: 4px; flex: 1; min-width: 240px; }
+  nav button { background: none; border-color: transparent; color: var(--sub); }
+  nav button.on { color: var(--text); border-color: var(--line); background: var(--card); }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  .tab { display: none; gap: 20px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tab.on { display: grid; }
+  #tab-apps { grid-template-columns: minmax(0, 1.6fr) minmax(340px, 1fr); }
+  @media (max-width: 800px) { .tab, #tab-apps { grid-template-columns: minmax(0, 1fr); } }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; min-width: 0; }
+  section.wide { grid-column: 1 / -1; }
+  button, .file { font: inherit; color: var(--text); background: color-mix(in srgb, var(--sub) 18%, var(--card)); border: 1px solid var(--line); border-radius: 8px; padding: 6px 13px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .file input { display: none; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .row label { color: var(--sub); font-size: 13px; }
+  .row label.file { color: var(--text); font-size: inherit; }
+  input[type=range] { flex: 1; min-width: 120px; accent-color: var(--accent); }
+  input[type=number], input[type=text], select, textarea { font: inherit; color: var(--text); background: var(--field); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+  input[type=number] { width: 90px; }
+  input[type=text] { flex: 1; min-width: 200px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  .sub { color: var(--sub); font-size: 13px; }
+  p.sub { margin: 12px 0 0; }
+  #state { font-size: 13px; color: var(--sub); }
+  #state.on { color: var(--accent); }
+  .notice { display: none; border-color: var(--accent2); margin-bottom: 20px; }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .swatch { display: flex; align-items: center; gap: 10px; background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .swatch input { width: 40px; height: 32px; border: none; padding: 0; background: none; cursor: pointer; }
+  .swatch b { font-weight: 600; font-size: 13px; display: block; }
+  .swatch code { font-size: 12px; color: var(--sub); }
+  .presets button { display: inline-flex; align-items: center; gap: 8px; }
+  .presets i { display: inline-flex; border-radius: 4px; overflow: hidden; border: 1px solid var(--line); }
+  .presets i span { width: 10px; height: 14px; }
+  .round { border-radius: 50%; display: block; margin: 0 auto; background: #000; box-shadow: 0 0 0 6px var(--field), 0 0 0 7px var(--line); }
+  #face { width: 280px; height: 280px; cursor: grab; touch-action: none; }
+  #face.drop, #wave.drop { outline: 2px dashed var(--accent); outline-offset: 6px; }
+  #wave { width: 100%; height: 90px; background: var(--field); border-radius: 8px; display: block; }
+  #screen { width: 320px; height: 320px; overflow: hidden; background: var(--bg); }
+  #screen iframe { width: 100%; height: 100%; border: 0; display: block; }
+  #screen.shake { animation: shake .08s linear infinite; }
+  @keyframes shake { 0% { transform: translate(2px, 1px); } 50% { transform: translate(-2px, -1px); } 100% { transform: translate(1px, -2px); } }
+  #gallery { display: flex; gap: 8px; flex-wrap: wrap; }
+  #code { width: 100%; height: 420px; margin-top: 12px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; tab-size: 2; white-space: pre; resize: vertical; }
+  #appStatus.err { color: var(--accent2); }
+  progress { width: 100%; height: 10px; accent-color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  th, td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--sub); font-weight: 500; }
+  th:last-child, td:last-child { text-align: left; white-space: normal; min-width: 140px; }
+  table.api td, table.api th { text-align: left; white-space: normal; vertical-align: top; }
+  table.api code { white-space: nowrap; }
+  code { font: 12.5px ui-monospace, Menlo, monospace; }
+  pre.log { font: 12px/1.5 ui-monospace, Menlo, monospace; color: var(--sub); white-space: pre-wrap; max-height: 170px; overflow: auto; margin: 12px 0 0; }
+  .scroll { overflow-x: auto; }
+  details summary { cursor: pointer; color: var(--sub); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>StopWatch 着せ替え</h1>
+  <nav>
+    <button data-tab="theme" class="on">テーマ</button>
+    <button data-tab="apps">アプリ</button>
+    <button data-tab="transfer">転送</button>
+  </nav>
+  <a id="install" href="install.html">本体の準備</a>
+  <span id="state">未接続</span>
+  <button id="connect" class="primary">接続</button>
+</header>
+
+<main>
+  <section id="unsupported" class="notice">
+    このブラウザは Web Bluetooth に対応していません。本体とつなぐには PC か Android の Chrome / Edge で開いてください(https か localhost が必要です)。テーマやアプリの作成とプレビューはこのまま使えます。
+  </section>
+  <section id="shared" class="notice">
+    共有リンクから読み込みました。内容を確かめてから本体に送ってください。
+  </section>
+
+  <!-- ============================================================ テーマ -->
+  <div id="tab-theme" class="tab on">
+    <section class="wide">
+      <h2>テーマカラー</h2>
+      <div id="swatches" class="swatches"></div>
+      <div id="presets" class="row presets"></div>
+      <div class="row">
+        <label for="themeText">共有用の文字列</label>
+        <input id="themeText" type="text" spellcheck="false">
+        <button id="copyTheme">コピー</button>
+        <button id="copyThemeLink">リンクをコピー</button>
+      </div>
+      <div class="row">
+        <button id="sendTheme" class="primary" disabled>テーマをまとめて送る</button>
+        <button id="sendColors" disabled>色だけ送る</button>
+        <button id="saveTheme">テーマをファイルに保存</button>
+        <label class="file">テーマファイルを開く<input id="themeFile" type="file" accept=".json,application/json"></label>
+      </div>
+      <p class="sub">色・文字盤・効果音をまとめて 1 つのテーマです。時計もミニアプリもこの色で描かれます。文字列を貼り付けると色が切り替わります。「まとめて送る」は、色と、下で選んである文字盤・効果音を送ります。</p>
+    </section>
+
+    <section>
+      <h2>文字盤</h2>
+      <canvas id="face" class="round" width="466" height="466"></canvas>
+      <div class="row">
+        <label class="file">画像を選ぶ<input id="imgFile" type="file" accept="image/*"></label>
+        <button id="removeFace" disabled>画像を外す</button>
+        <span class="sub">ドラッグで位置、ホイールで拡大</span>
+      </div>
+      <div class="row"><label for="zoom">拡大</label><input id="zoom" type="range" min="1" max="4" step="0.01" value="1"></div>
+      <div class="row"><label for="quality">画質</label><input id="quality" type="range" min="0.4" max="0.95" step="0.05" value="0.85">
+        <span id="imgSize" class="sub">-</span></div>
+      <div class="row">
+        <button id="sendFace" disabled>文字盤を送る</button>
+        <button id="clearFace" disabled>本体の文字盤を消す</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>効果音</h2>
+      <canvas id="wave" width="600" height="180"></canvas>
+      <div class="row">
+        <label class="file">音声を選ぶ<input id="sndFile" type="file" accept="audio/*,video/*"></label>
+        <button id="preview" disabled>試聴</button>
+        <span id="sndSize" class="sub">-</span>
+      </div>
+      <div class="row"><label for="sndStart">開始位置</label><input id="sndStart" type="range" min="0" max="0" step="0.01" value="0"><span id="sndStartV" class="sub">0.00 秒</span></div>
+      <div class="row"><label for="sndLen">長さ</label><input id="sndLen" type="range" min="0.1" max="4" step="0.1" value="1.5"><span id="sndLenV" class="sub">1.5 秒</span></div>
+      <div class="row">
+        <button id="sendSound" disabled>効果音を送る</button>
+        <button id="play" disabled>本体で鳴らす</button>
+        <button id="clearSound" disabled>本体の音を消す</button>
+      </div>
+      <p class="sub">時報(毎正時)、ボタン A、画面タップ、アプリの <code>watch.sound()</code> で鳴ります。16 kHz・モノラルに変換して送ります。</p>
+    </section>
+  </div>
+
+  <!-- ============================================================ アプリ -->
+  <div id="tab-apps" class="tab">
+    <section>
+      <h2>ミニアプリ</h2>
+      <div id="gallery"></div>
+      <textarea id="code" spellcheck="false" wrap="off"></textarea>
+      <div class="row">
+        <button id="rerun">最初から実行</button>
+        <button id="saveApp">.js を保存</button>
+        <label class="file">.js を開く<input id="appFile" type="file" accept=".js,text/javascript"></label>
+        <button id="copyAppLink">共有リンクをコピー</button>
+        <span id="appSize" class="sub"></span>
+      </div>
+    </section>
+
+    <section>
+      <h2>プレビュー</h2>
+      <div id="screen" class="round"></div>
+      <div class="row" style="justify-content: center">
+        <button id="btnA">A</button>
+        <button id="btnB">B</button>
+        <span id="appStatus" class="sub"></span>
+      </div>
+      <details class="row">
+        <summary>傾き(加速度)を変える</summary>
+        <div class="row" style="width: 100%"><label for="tiltX">左右</label><input id="tiltX" type="range" min="-1" max="1" step="0.01" value="0">
+          <label for="tiltY">前後</label><input id="tiltY" type="range" min="-1" max="1" step="0.01" value="0"></div>
+      </details>
+      <div class="row">
+        <label for="slot">入れる場所</label><select id="slot"></select>
+      </div>
+      <div class="row">
+        <button id="installApp" class="primary" disabled>本体に送って起動</button>
+        <button id="runApp" disabled>起動</button>
+        <button id="deleteApp" disabled>削除</button>
+        <button id="homeApp" disabled>時計に戻る</button>
+      </div>
+      <pre id="console" class="log"></pre>
+    </section>
+
+    <section class="wide">
+      <h2>アプリの書き方</h2>
+      <p class="sub" style="margin-top: 0">画面は直径 466px の円です。<code>draw()</code> が 1 秒に何回か呼ばれるので、その中で毎回全体を描きます。色は <code>theme</code> から取ると、どのテーマにも馴染みます。プレビューと本体は同じ API で動きますが、本体はずっと遅いので、重い計算は避けてください。</p>
+      <div class="scroll">
+      <table class="api">
+        <tr><th>書くもの</th><th>内容</th></tr>
+        <tr><td><code>// @name 名前</code></td><td>先頭のコメント。本体のアプリ一覧に出る名前</td></tr>
+        <tr><td><code>function setup()</code></td><td>起動時に 1 回(省略可)</td></tr>
+        <tr><td><code>function draw()</code></td><td>画面を描く(必須)。既定は 1 秒に 10 回</td></tr>
+        <tr><td><code>function onButton(b)</code></td><td>ボタンが押された。<code>b</code> は <code>"A"</code> か <code>"B"</code></td></tr>
+        <tr><td><code>function onTouch(x, y)</code></td><td>画面がタップされた</td></tr>
+        <tr><th>使えるもの</th><th></th></tr>
+        <tr><td><code>theme.bg / surface / fg / muted / accent / accent2</code></td><td>テーマカラー(背景 / 面 / 文字 / 控えめ / 強調 / 強調 2)</td></tr>
+        <tr><td><code>g.clear(色)</code> <code>g.face()</code></td><td>塗りつぶす(省略時は背景色) / テーマの文字盤画像を描く</td></tr>
+        <tr><td><code>g.fillRect(x, y, w, h, 色)</code> <code>g.rect(…)</code> <code>g.fillRoundRect(x, y, w, h, r, 色)</code></td><td>四角形。色を省くと文字色</td></tr>
+        <tr><td><code>g.fillCircle(x, y, r, 色)</code> <code>g.circle(…)</code> <code>g.fillTriangle(x0, y0, x1, y1, x2, y2, 色)</code></td><td>円と三角形</td></tr>
+        <tr><td><code>g.line(x0, y0, x1, y1, 色, 太さ)</code></td><td>線</td></tr>
+        <tr><td><code>g.arc(x, y, 外半径, 内半径, 開始, 終了, 色)</code></td><td>輪の一部。角度は 12 時が 0 度で時計回り</td></tr>
+        <tr><td><code>g.text(文字, x, y, { size, color, align, font, outline })</code></td><td>文字。<code>align</code> は <code>"left" / "center" / "right"</code>、<code>font: "digit"</code> は数字用の大きな書体(高さ 75px)、<code>outline</code> は縁取りの色</td></tr>
+        <tr><td><code>g.textWidth(文字, { size, font })</code></td><td>文字の幅(px)</td></tr>
+        <tr><td><code>watch.vibrate(ミリ秒)</code> <code>watch.tone(周波数, ミリ秒)</code> <code>watch.sound()</code></td><td>振動 / ビープ音 / テーマの効果音</td></tr>
+        <tr><td><code>watch.accel()</code> <code>watch.battery()</code></td><td>加速度 <code>{ x, y, z }</code>(G) / 電池残量(%)</td></tr>
+        <tr><td><code>watch.frameRate(回数)</code> <code>watch.exit()</code></td><td><code>draw()</code> の頻度(1〜30) / 時計に戻る</td></tr>
+        <tr><td><code>store.load()</code> <code>store.save(値)</code></td><td>アプリごとの保存領域(JSON で 4096 バイトまで)</td></tr>
+        <tr><td><code>print(…)</code></td><td>下のコンソールに出す。<code>console.log</code> でも同じ</td></tr>
+        <tr><td><code>Date</code> <code>Math</code> <code>JSON</code> など</td><td>JavaScript の標準機能。<code>setTimeout</code> や通信はありません</td></tr>
+        <tr><th>制限</th><th></th></tr>
+        <tr><td>大きさ・メモリ</td><td>スクリプト 64kB まで、メモリ 1MB まで</td></tr>
+        <tr><td>時間</td><td><code>draw()</code> やイベント 1 回が 0.25 秒、読み込みと <code>setup()</code> が 1 秒を超えると止められる</td></tr>
+        <tr><td>戻り方</td><td>本体では A と B の同時長押しで、いつでも時計に戻る</td></tr>
+      </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============================================================ 転送 -->
+  <div id="tab-transfer" class="tab">
+    <section class="wide">
+      <h2>転送</h2>
+      <progress id="bar" max="1" value="0"></progress>
+      <div class="row">
+        <label for="mode">書き込み方式</label>
+        <select id="mode"><option value="nr">応答なし(速い)</option><option value="wr">応答あり(確実)</option></select>
+        <label for="window">確認の間隔(チャンク)</label><input id="window" type="number" min="1" max="255" value="16">
+        <label for="maxChunk">チャンク上限(バイト)</label><input id="maxChunk" type="number" min="20" max="512" value="512">
+        <button id="syncTime" disabled>時刻を合わせる</button>
+        <button id="buzz" disabled>振動</button>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>種類</th><th>サイズ</th><th>時間</th><th>速度</th><th>MTU</th><th>チャンク</th><th>間隔</th><th>方式</th><th>結果</th></tr></thead>
+          <tbody id="results"></tbody>
+        </table>
+      </div>
+      <pre id="log" class="log"></pre>
+    </section>
+  </div>
+</main>
+
+<script>
+'use strict';
+const SVC    = '6b1d0001-9c4f-4f0e-a3b7-5a7e2c40d1e9';
+const CTRL   = '6b1d0002-9c4f-4f0e-a3b7-5a7e2c40d1e9';
+const DATA   = '6b1d0003-9c4f-4f0e-a3b7-5a7e2c40d1e9';
+const STATUS = '6b1d0004-9c4f-4f0e-a3b7-5a7e2c40d1e9';
+const APPS   = '6b1d0005-9c4f-4f0e-a3b7-5a7e2c40d1e9';
+const LOG    = '6b1d0006-9c4f-4f0e-a3b7-5a7e2c40d1e9';
+const CMD = { BEGIN: 0x01, ABORT: 0x03, SET_TIME: 0x10, PLAY: 0x11, BUZZ: 0x12, CLEAR: 0x13, SET_THEME: 0x14, RUN: 0x20, HOME: 0x21 };
+const KIND = { FACE: 1, SOUND: 2, APP: 3 };
+const ST = { IDLE: 0, RECEIVING: 1, SAVED: 2, ERROR: 3 };
+const ERRORS = ['', 'サイズが大きすぎます', '本体のメモリが足りません', 'CRC が一致しません(データ化け・欠落)', '宣言より多いデータが届きました',
+  '本体への保存に失敗しました', '不正な要求です', '本体でデコードできませんでした', '本体が前の転送を処理中です'];
+const SIZE = 466, SOUND_RATE = 16000, APP_SLOTS = 8, MAX_APP = 64 * 1024;
+
+const $ = id => document.getElementById(id);
+const stamp = () => new Date().toLocaleTimeString();
+const appendLog = (id, msg) => { const el = $(id); el.textContent += msg + '\n'; el.scrollTop = el.scrollHeight; };
+const log = msg => appendLog('log', `${stamp()}  ${msg}`);
+const kB = n => (n / 1024).toFixed(1) + ' kB';
+const utf8 = s => new TextEncoder().encode(s);
+const b64 = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+function download(name, data, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], { type }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+async function copyText(text, what) {
+  try { await navigator.clipboard.writeText(text); log(`${what}をコピーしました。`); }
+  catch (e) { log(`コピーできませんでした。${what}: ${text}`); showTab('transfer'); }
+}
+
+// タブ
+for (const b of document.querySelectorAll('nav button')) {
+  b.addEventListener('click', () => showTab(b.dataset.tab));
+}
+function showTab(name) {
+  for (const b of document.querySelectorAll('nav button')) b.classList.toggle('on', b.dataset.tab === name);
+  for (const t of document.querySelectorAll('.tab')) t.classList.toggle('on', t.id === 'tab-' + name);
+}
+
+// ================================================================ BLE
+const ble = { device: null, ctrl: null, data: null, status: null, apps: null, last: null, waiters: [], busy: false, installed: [] };
+
+function crc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) {
+    c ^= bytes[i];
+    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xEDB88320 & -(c & 1));
+  }
+  return ~c >>> 0;
+}
+
+function onStatus(e) {
+  const v = e.target.value;
+  const s = { state: v.getUint8(0), err: v.getUint8(1), mtu: v.getUint16(2, true), received: v.getUint32(4, true) };
+  ble.last = s;
+  ble.waiters = ble.waiters.filter(w => {
+    if (!w.pred(s)) return true;
+    clearTimeout(w.timer); w.resolve(s); return false;
+  });
+}
+
+// 条件を満たす STATUS 通知を待つ。すでに届いていればすぐ返す。
+function waitStatus(pred, ms, what) {
+  if (ble.last && pred(ble.last)) return Promise.resolve(ble.last);
+  return new Promise((resolve, reject) => {
+    const w = { pred, resolve, reject };
+    w.timer = setTimeout(() => {
+      ble.waiters = ble.waiters.filter(x => x !== w);
+      const got = ble.last ? `(本体の受信済み ${ble.last.received} バイト)` : '';
+      reject(new Error(`${what}: 本体から応答がありません${got}`));
+    }, ms);
+    ble.waiters.push(w);
+  });
+}
+
+function setConnected(on) {
+  $('state').textContent = on ? `接続中: ${ble.device.name || 'StopWatch'}` : '未接続';
+  $('state').classList.toggle('on', on);
+  $('connect').textContent = on ? '切断' : '接続';
+  refreshButtons();
+}
+
+function refreshButtons() {
+  const on = !!ble.ctrl && !ble.busy;
+  const slot = +$('slot').value, has = ble.installed.some(a => a.s === slot);
+  $('sendFace').disabled = !(on && face.img);
+  $('sendSound').disabled = !(on && sound.pcm);
+  $('installApp').disabled = !(on && ble.apps);
+  $('runApp').disabled = $('deleteApp').disabled = !(on && ble.apps && has);
+  $('homeApp').disabled = !(on && ble.apps);
+  for (const id of ['sendTheme', 'sendColors', 'clearFace', 'clearSound', 'play', 'syncTime', 'buzz']) $(id).disabled = !on;
+  $('connect').disabled = ble.busy || !navigator.bluetooth;
+  $('removeFace').disabled = !face.img;
+}
+
+async function connect() {
+  ble.device = await navigator.bluetooth.requestDevice({
+    filters: [{ services: [SVC] }, { namePrefix: 'M5StopWatch' }],
+    optionalServices: [SVC],
+  });
+  ble.device.addEventListener('gattserverdisconnected', onDisconnected);
+  log(`${ble.device.name || 'デバイス'} に接続しています…`);
+  try {
+    const server = await ble.device.gatt.connect();
+    const svc = await server.getPrimaryService(SVC);
+    const ctrl = await svc.getCharacteristic(CTRL);
+    ble.data = await svc.getCharacteristic(DATA);
+    ble.status = await svc.getCharacteristic(STATUS);
+    ble.status.addEventListener('characteristicvaluechanged', onStatus);
+    await ble.status.startNotifications();
+    try {  // アプリ機能 (古いファームウェアには無い)
+      ble.apps = await svc.getCharacteristic(APPS);
+      const logChr = await svc.getCharacteristic(LOG);
+      logChr.addEventListener('characteristicvaluechanged', e => appConsole('本体', new TextDecoder().decode(e.target.value)));
+      await logChr.startNotifications();
+    } catch (e) {
+      ble.apps = null;
+      log('この本体はミニアプリに対応していません(ファームウェアが古いようです)。');
+    }
+    ble.ctrl = ctrl;
+    await syncTime();
+    await readApps();
+  } catch (e) {
+    ble.device.gatt.disconnect();  // 途中で失敗したら中途半端な接続を残さない
+    throw e;
+  }
+  log('接続しました。時刻を合わせました。');
+  setConnected(true);
+}
+
+function onDisconnected() {
+  for (const w of ble.waiters) { clearTimeout(w.timer); w.reject(new Error('切断されました')); }
+  Object.assign(ble, { ctrl: null, data: null, status: null, apps: null, last: null, waiters: [], installed: [] });
+  log('切断されました。');
+  renderSlots();
+  setConnected(false);
+}
+
+const command = bytes => ble.ctrl.writeValueWithResponse(new Uint8Array(bytes));
+
+function syncTime() {
+  const b = new DataView(new ArrayBuffer(7));
+  b.setUint8(0, CMD.SET_TIME);
+  b.setUint32(1, Math.floor(Date.now() / 1000), true);
+  b.setInt16(5, -new Date().getTimezoneOffset(), true);
+  return ble.ctrl.writeValueWithResponse(b);
+}
+
+async function readApps() {
+  if (!ble.apps) return;
+  try {
+    ble.installed = JSON.parse(new TextDecoder().decode(await ble.apps.readValue()));
+  } catch (e) { ble.installed = []; }
+  renderSlots();
+}
+
+async function sendFile(kind, bytes, label, slot = 0) {
+  const mode = $('mode').value;
+  const windowSize = Math.min(255, Math.max(1, +$('window').value || 16));
+  const head = new DataView(new ArrayBuffer(12));
+  head.setUint8(0, CMD.BEGIN);
+  head.setUint8(1, kind);
+  head.setUint8(2, slot);
+  head.setUint32(3, bytes.length, true);
+  head.setUint32(7, crc32(bytes), true);
+  head.setUint8(11, windowSize);
+
+  const check = s => { if (s.state === ST.ERROR) throw new Error(ERRORS[s.err] || `エラー ${s.err}`); return s; };
+  const row = { label, size: bytes.length, mtu: '-', chunk: '-', windowSize, mode, time: '-', speed: '-', result: '' };
+  $('bar').value = 0;
+  const t0 = performance.now();
+  try {
+    ble.last = null;
+    await ble.ctrl.writeValueWithResponse(head);
+    const st = check(await waitStatus(s => s.state === ST.RECEIVING || s.state === ST.ERROR, 5000, '開始'));
+    // 1 回の書き込みに載せられるのは MTU-3 バイトまで (Web Bluetooth の上限は 512)
+    const chunk = Math.max(20, Math.min(st.mtu - 3, 512, +$('maxChunk').value || 512));
+    row.mtu = st.mtu; row.chunk = chunk;
+    log(`${label} ${kB(bytes.length)} を送ります (MTU ${st.mtu}, チャンク ${chunk} バイト)`);
+
+    let sent = 0, n = 0;
+    while (sent < bytes.length) {
+      const part = bytes.subarray(sent, sent + chunk);
+      if (mode === 'wr') await ble.data.writeValueWithResponse(part);
+      else await ble.data.writeValueWithoutResponse(part);
+      sent += part.length;
+      if (++n % windowSize === 0 || sent === bytes.length) {
+        const target = sent;  // 本体がここまで受け取ったことを確かめてから次へ進む
+        check(await waitStatus(s => s.state !== ST.RECEIVING || s.received >= target, 5000, `${sent} バイト目の確認`));
+        $('bar').value = sent / bytes.length;
+      }
+    }
+    const sec = (performance.now() - t0) / 1000;
+    row.time = sec.toFixed(2) + ' 秒';
+    row.speed = (bytes.length / 1024 / sec).toFixed(1) + ' kB/s';
+    check(await waitStatus(s => s.state === ST.SAVED || s.state === ST.ERROR, 15000, '保存'));
+    row.result = 'OK';
+    log(`${label} を保存しました (${row.time}, ${row.speed})`);
+  } catch (e) {
+    row.result = e.message;
+    if (ble.ctrl) await command([CMD.ABORT]).catch(() => {});  // 本体を受信待ちのままにしない
+    throw e;
+  } finally {
+    const tr = $('results').insertRow(0);
+    for (const v of [row.label, kB(row.size), row.time, row.speed, row.mtu, row.chunk, row.windowSize, row.mode === 'wr' ? '応答あり' : '応答なし', row.result]) {
+      tr.insertCell().textContent = v;
+    }
+  }
+}
+
+// ボタン操作を 1 つずつ実行する (GATT は同時に複数の操作を受け付けない)
+function action(id, fn) {
+  $(id).addEventListener('click', async () => {
+    if (ble.busy) return;
+    ble.busy = true; refreshButtons();
+    try { await fn(); } catch (e) { if (e.name !== 'NotFoundError') { log('エラー: ' + e.message); appConsole('サイト', 'エラー: ' + e.message); } }
+    ble.busy = false; refreshButtons();
+  });
+}
+
+// ================================================================ テーマカラー
+const ROLES = [['bg', '背景'], ['surface', '面'], ['fg', '文字'], ['muted', '控えめ'], ['accent', '強調'], ['accent2', '強調 2']];
+const PRESETS = [
+  ['ミッドナイト', '101216,1A1D24,E8EAF0,9AA1B0,5CC8FF,FFA500'],
+  ['サクラ', 'FFF5F7,FFE3EA,4A2B3A,A77C8C,E8558A,F2A541'],
+  ['フォレスト', '0F1F17,1B3226,E6F2E6,8FB09A,6FDC8C,F2C94C'],
+  ['オーシャン', '06202E,0E3347,E0F4FF,7FA8BD,3DD6D0,FF8FA3'],
+  ['サンセット', '2B1B2E,45263F,FFE9D6,C79A9A,FF7B54,FFD56B'],
+  ['ペーパー', 'F7F3EA,EAE3D2,2B2A27,8A8577,C2552D,2D6CC2'],
+  ['モノクロ', '000000,1C1C1C,FFFFFF,8C8C8C,FFFFFF,BDBDBD'],
+];
+const theme = { colors: PRESETS[0][1].split(',').map(c => '#' + c.toLowerCase()) };  // ROLES と同じ順の "#rrggbb"
+
+const themeString = () => theme.colors.map(c => c.toUpperCase()).join(',');
+const themeNumbers = () => Object.fromEntries(ROLES.map(([key], i) => [key, parseInt(theme.colors[i].slice(1), 16)]));
+
+// "#101216,#1A1D24,…" や "101216 1a1d24 …" から 6 色を取り出す
+function parseThemeString(text) {
+  const colors = (text.match(/[0-9a-f]{6}/gi) || []).map(c => '#' + c.toLowerCase());
+  return colors.length === ROLES.length ? colors : null;
+}
+
+function applyThemeToPage() {
+  const [bg, card, text, sub, accent, accent2] = theme.colors;
+  const st = document.documentElement.style;
+  for (const [k, v] of Object.entries({ bg, card, text, sub, accent, accent2 })) st.setProperty('--' + k, v);
+  ROLES.forEach(([key], i) => { $('color-' + key).value = theme.colors[i]; $('hex-' + key).textContent = theme.colors[i].toUpperCase(); });
+  if (document.activeElement !== $('themeText')) $('themeText').value = themeString();
+  renderFace(); drawWave();
+  preview.send({ type: 'theme', theme: themeNumbers() });
+}
+
+function setTheme(colors) {
+  theme.colors = colors.slice();
+  applyThemeToPage();
+}
+
+function initThemeUi() {
+  for (const [key, label] of ROLES) {
+    const el = document.createElement('label');
+    el.className = 'swatch';
+    el.innerHTML = `<input type="color" id="color-${key}"><span><b>${label}</b><code id="hex-${key}"></code> <code>theme.${key}</code></span>`;
+    $('swatches').append(el);
+    el.querySelector('input').addEventListener('input', e => {
+      theme.colors[ROLES.findIndex(r => r[0] === key)] = e.target.value;
+      applyThemeToPage();
+    });
+  }
+  for (const [name, str] of PRESETS) {
+    const b = document.createElement('button');
+    b.innerHTML = `<i>${str.split(',').map(c => `<span style="background:#${c}"></span>`).join('')}</i>${name}`;
+    b.addEventListener('click', () => setTheme(parseThemeString(str)));
+    $('presets').append(b);
+  }
+  $('themeText').addEventListener('input', e => { const c = parseThemeString(e.target.value); if (c) setTheme(c); });
+  $('themeText').addEventListener('blur', e => { e.target.value = themeString(); });
+  $('copyTheme').addEventListener('click', () => copyText(themeString(), 'テーマの文字列'));
+  $('copyThemeLink').addEventListener('click', () => copyText(location.href.split('#')[0] + '#theme=' + themeString().replace(/#/g, ''), 'テーマのリンク'));
+}
+
+function sendColors() {
+  const bytes = [CMD.SET_THEME];
+  for (const c of theme.colors) bytes.push(parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16));
+  return command(bytes);
+}
+
+// テーマファイル: 色・文字盤(JPEG)・効果音(PCM)を 1 つの JSON にまとめたもの
+async function saveThemeFile() {
+  const data = {
+    format: 'stopwatch-theme', version: 1, colors: theme.colors,
+    face: face.img ? 'data:image/jpeg;base64,' + b64(await faceJpeg()) : null,
+    sound: sound.pcm ? { rate: SOUND_RATE, pcm: b64(new Uint8Array(sound.pcm.buffer)) } : null,
+  };
+  download('theme.swtheme.json', JSON.stringify(data), 'application/json');
+}
+
+async function openThemeFile(file) {
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (data.format !== 'stopwatch-theme' || !Array.isArray(data.colors)) throw new Error('形式が違います');
+    const colors = parseThemeString(data.colors.join(','));
+    if (!colors) throw new Error('色の数が違います');
+    setTheme(colors);
+    if (typeof data.face === 'string' && data.face.startsWith('data:image/jpeg;base64,')) {
+      await loadImage(new Blob([unb64(data.face.split(',')[1])], { type: 'image/jpeg' }));
+    } else removeFace();
+    if (data.sound && typeof data.sound.pcm === 'string') {
+      const bytes = unb64(data.sound.pcm);
+      sound.source = null;
+      setSoundPcm(new Int16Array(bytes.buffer, 0, bytes.length >> 1));
+    }
+    log('テーマファイルを読み込みました。');
+  } catch (e) { log('テーマファイルを読み込めませんでした: ' + e.message); }
+}
+
+// ================================================================ 文字盤
+const face = { img: null, zoom: 1, panX: 0, panY: 0, drag: null, sizeTimer: 0 };
+const faceCanvas = $('face'), faceCtx = faceCanvas.getContext('2d');
+
+function drawFaceImage(ctx) {
+  ctx.fillStyle = face.img ? '#000' : theme.colors[0];
+  ctx.fillRect(0, 0, SIZE, SIZE);
+  if (!face.img) return;
+  const s = Math.max(SIZE / face.img.width, SIZE / face.img.height) * face.zoom;
+  const w = face.img.width * s, h = face.img.height * s;
+  const mx = (w - SIZE) / 2, my = (h - SIZE) / 2;  // 画像が画面を覆い続ける範囲に収める
+  face.panX = Math.max(-mx, Math.min(mx, face.panX));
+  face.panY = Math.max(-my, Math.min(my, face.panY));
+  ctx.save();
+  ctx.beginPath(); ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2); ctx.clip();
+  ctx.drawImage(face.img, (SIZE - w) / 2 + face.panX, (SIZE - h) / 2 + face.panY, w, h);
+  ctx.restore();
+}
+
+// 本体の時計に近い見た目で重ねる (確認用。送る画像には含めない)
+function drawClockOverlay(ctx) {
+  const now = new Date(), c = SIZE / 2;
+  const [bg, , fg, muted, , accent2] = theme.colors;
+  const outlined = (text, y, font) => {
+    ctx.font = font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 6; ctx.lineJoin = 'round'; ctx.strokeStyle = bg; ctx.strokeText(text, c, y);
+    ctx.fillStyle = fg; ctx.fillText(text, c, y);
+  };
+  if (!face.img) {
+    for (let i = 0; i < 60; i++) {
+      const a = i * Math.PI / 30, r0 = i % 5 ? c - 14 : c - 26;
+      ctx.strokeStyle = i % 5 ? muted : fg; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(c + Math.sin(a) * r0, c - Math.cos(a) * r0); ctx.lineTo(c + Math.sin(a) * (c - 6), c - Math.cos(a) * (c - 6)); ctx.stroke();
+    }
+  }
+  const a = now.getSeconds() * Math.PI / 30;
+  ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(c + Math.sin(a) * (c - 16), c - Math.cos(a) * (c - 16), 9, 0, 7); ctx.fill();
+  ctx.fillStyle = accent2; ctx.beginPath(); ctx.arc(c + Math.sin(a) * (c - 16), c - Math.cos(a) * (c - 16), 6, 0, 7); ctx.fill();
+  const p = n => String(n).padStart(2, '0');
+  outlined(`${p(now.getHours())}:${p(now.getMinutes())}`, c - 10, '700 96px "Helvetica Neue", Arial, sans-serif');
+  outlined(`${now.getMonth() + 1}/${now.getDate()} (${'日月火水木金土'[now.getDay()]})`, c + 70, '500 28px system-ui, sans-serif');
+}
+
+function renderFace() {
+  drawFaceImage(faceCtx);
+  drawClockOverlay(faceCtx);
+}
+
+function faceCanvasForExport() {
+  const c = document.createElement('canvas');
+  c.width = c.height = SIZE;
+  drawFaceImage(c.getContext('2d'));
+  return c;
+}
+
+function faceJpeg() {
+  return new Promise(resolve => faceCanvasForExport().toBlob(async b => resolve(new Uint8Array(await b.arrayBuffer())), 'image/jpeg', +$('quality').value));
+}
+
+function faceChanged() {
+  renderFace();
+  clearTimeout(face.sizeTimer);
+  if (!face.img) { $('imgSize').textContent = '-'; return preview.setFace(); }
+  face.sizeTimer = setTimeout(async () => { $('imgSize').textContent = kB((await faceJpeg()).length); preview.setFace(); }, 200);
+}
+
+async function loadImage(file) {
+  if (!file) return;
+  try {
+    face.img = await createImageBitmap(file);
+  } catch (e) { return log('画像を読み込めませんでした。'); }
+  face.zoom = 1; face.panX = face.panY = 0; $('zoom').value = 1;
+  faceChanged(); refreshButtons();
+}
+
+function removeFace() {
+  face.img = null;
+  $('imgFile').value = '';
+  faceChanged(); refreshButtons();
+}
+
+$('imgFile').addEventListener('change', e => loadImage(e.target.files[0]));
+$('removeFace').addEventListener('click', removeFace);
+$('zoom').addEventListener('input', e => { face.zoom = +e.target.value; faceChanged(); });
+$('quality').addEventListener('input', faceChanged);
+faceCanvas.addEventListener('pointerdown', e => { face.drag = { x: e.clientX, y: e.clientY }; faceCanvas.setPointerCapture(e.pointerId); });
+faceCanvas.addEventListener('pointermove', e => {
+  if (!face.drag) return;
+  const k = SIZE / faceCanvas.clientWidth;
+  face.panX += (e.clientX - face.drag.x) * k; face.panY += (e.clientY - face.drag.y) * k;
+  face.drag = { x: e.clientX, y: e.clientY };
+  faceChanged();
+});
+faceCanvas.addEventListener('pointerup', () => { face.drag = null; });
+faceCanvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  face.zoom = Math.max(1, Math.min(4, face.zoom * (e.deltaY < 0 ? 1.05 : 1 / 1.05)));
+  $('zoom').value = face.zoom; faceChanged();
+}, { passive: false });
+
+// ================================================================ 効果音
+const sound = { ctx: null, source: null, pcm: null };
+const audio = () => (sound.ctx ??= new AudioContext());
+
+async function loadSound(file) {
+  if (!file) return;
+  try {
+    sound.source = await audio().decodeAudioData(await file.arrayBuffer());
+  } catch (e) { return log('音声を読み込めませんでした: ' + file.name); }
+  $('sndStart').max = Math.max(0, sound.source.duration - 0.1).toFixed(2);
+  $('sndStart').value = 0;
+  await renderSound();
+}
+
+// 選んだ区間を 16 kHz モノラルに変換し、音量をそろえて 16bit PCM にする
+async function renderSound() {
+  if (!sound.source) return;
+  const start = +$('sndStart').value;
+  const len = Math.min(+$('sndLen').value, sound.source.duration - start);
+  $('sndStartV').textContent = start.toFixed(2) + ' 秒';
+  $('sndLenV').textContent = len.toFixed(1) + ' 秒';
+  const off = new OfflineAudioContext(1, Math.max(1, Math.round(len * SOUND_RATE)), SOUND_RATE);
+  const src = off.createBufferSource();
+  src.buffer = sound.source; src.connect(off.destination); src.start(0, start, len);
+  const f = (await off.startRendering()).getChannelData(0);
+  let peak = 0;
+  for (const v of f) peak = Math.max(peak, Math.abs(v));
+  const gain = peak > 0.001 ? 0.9 / peak : 1, fade = Math.min(160, f.length >> 1);
+  const pcm = new Int16Array(f.length);
+  for (let i = 0; i < f.length; i++) {
+    const edge = Math.min(1, i / fade, (f.length - 1 - i) / fade);  // 両端のプチ音を防ぐ
+    pcm[i] = Math.round(Math.max(-1, Math.min(1, f[i] * gain)) * edge * 32767);
+  }
+  setSoundPcm(pcm);
+}
+
+function setSoundPcm(pcm) {
+  sound.pcm = pcm;
+  $('sndSize').textContent = kB(8 + pcm.length * 2);
+  drawWave();
+  $('preview').disabled = false; refreshButtons();
+}
+
+function soundFile() {
+  const out = new Uint8Array(8 + sound.pcm.length * 2), v = new DataView(out.buffer);
+  out.set([0x53, 0x57, 0x50, 0x31]);  // "SWP1"
+  v.setUint32(4, SOUND_RATE, true);
+  sound.pcm.forEach((s, i) => v.setInt16(8 + i * 2, s, true));
+  return out;
+}
+
+function drawWave() {
+  const c = $('wave'), g = c.getContext('2d'), mid = c.height / 2;
+  g.clearRect(0, 0, c.width, c.height);
+  if (!sound.pcm) {
+    g.fillStyle = theme.colors[3]; g.font = '24px system-ui, sans-serif'; g.textAlign = 'center';
+    return g.fillText('音声ファイルを選ぶか、ここにドロップ', c.width / 2, mid + 8);
+  }
+  g.fillStyle = theme.colors[4];
+  const per = sound.pcm.length / c.width;
+  for (let x = 0; x < c.width; x++) {
+    let lo = 0, hi = 0;
+    for (let i = Math.floor(x * per); i < Math.floor((x + 1) * per); i++) { lo = Math.min(lo, sound.pcm[i]); hi = Math.max(hi, sound.pcm[i]); }
+    g.fillRect(x, mid - hi / 32768 * mid, 1, Math.max(1, (hi - lo) / 32768 * mid));
+  }
+}
+
+// テーマの効果音を鳴らす (無ければ本体と同じ短いビープ)
+function playThemeSound() {
+  if (!sound.pcm) return beep(1760, 80);
+  const buf = audio().createBuffer(1, sound.pcm.length, SOUND_RATE);
+  buf.getChannelData(0).set(Float32Array.from(sound.pcm, s => s / 32768));
+  const src = audio().createBufferSource();
+  src.buffer = buf; src.connect(audio().destination); src.start();
+}
+
+function beep(freq, ms) {
+  const osc = audio().createOscillator(), gain = audio().createGain();
+  gain.gain.value = 0.08;
+  osc.frequency.value = freq; osc.connect(gain).connect(audio().destination);
+  osc.start(); osc.stop(audio().currentTime + ms / 1000);
+}
+
+$('sndFile').addEventListener('change', e => loadSound(e.target.files[0]));
+$('sndStart').addEventListener('change', renderSound);
+$('sndLen').addEventListener('change', renderSound);
+$('sndStart').addEventListener('input', e => { $('sndStartV').textContent = (+e.target.value).toFixed(2) + ' 秒'; });
+$('sndLen').addEventListener('input', e => { $('sndLenV').textContent = (+e.target.value).toFixed(1) + ' 秒'; });
+$('preview').addEventListener('click', playThemeSound);
+
+// ドラッグ&ドロップ
+for (const [el, load] of [[faceCanvas, loadImage], [$('wave'), loadSound]]) {
+  el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('drop'); });
+  el.addEventListener('dragleave', () => el.classList.remove('drop'));
+  el.addEventListener('drop', e => { e.preventDefault(); el.classList.remove('drop'); load(e.dataTransfer.files[0]); });
+}
+
+// ================================================================ ミニアプリのプレビュー
+// アプリは「隔離した iframe の中の Worker」で動かす。ページ本体や Bluetooth には触れず、通信もできない。
+// 本体(QuickJS)と同じ API・同じ引数の扱いになるよう、src/app_runtime.cpp と対で保守すること。
+
+// ---- Worker の中で動く部分: API の実装 ----
+function previewShim(init) {
+  const S = 466, G = globalThis;
+  const post = G.postMessage.bind(G), later = G.setTimeout.bind(G), cancel = G.clearTimeout.bind(G);
+  const clock = G.performance, toBitmap = G.createImageBitmap.bind(G), listen = G.addEventListener.bind(G);
+  const enc = new TextEncoder(), dec = new TextDecoder();
+  const canvas = new OffscreenCanvas(S, S), ctx = canvas.getContext('2d');
+  const lines = [];
+  const T = line => { if (init.trace) lines.push(line); };
+  let face = null, fps = 10, exited = false, stopped = false, prints = 0, timer = 0;
+  let storeJson = init.store || '', accel = init.accel || { x: 0, y: 0, z: 1 };
+  const theme = Object.assign({}, init.theme);
+  const fns = {};
+
+  // ---- 引数の変換 (app_runtime.cpp と同じ規則) ----
+  const R = v => {
+    v = Number(v);
+    if (v !== v) v = 0;
+    if (v > 32767) v = 32767;
+    if (v < -32768) v = -32768;
+    return Math.floor(v + 0.5);
+  };
+  const int = (v, def) => v === undefined ? def : R(v);
+  const clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+  const color = (v, def) => {
+    if (v === undefined || v === null) return def;
+    if (typeof v === 'string') {
+      if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v)) throw new TypeError('色は 0xRRGGBB の数値か "#rrggbb" で指定してください');
+      return parseInt(v.length === 4 ? v[1] + v[1] + v[2] + v[2] + v[3] + v[3] : v.slice(1), 16);
+    }
+    v = Number(v);
+    return v >= 0 && v <= 0xFFFFFF ? Math.floor(v) : 0;
+  };
+  const css = n => '#' + n.toString(16).padStart(6, '0');
+  const cut = s => {  // 200 バイト以内 (UTF-8 の文字の切れ目) に切り詰める
+    const b = enc.encode(s);
+    if (b.length <= 200) return s;
+    let n = 200;
+    while (n > 0 && (b[n] & 0xC0) === 0x80) n--;
+    return dec.decode(b.subarray(0, n));
+  };
+  const text = v => {
+    if (typeof v === 'symbol') throw new TypeError('Cannot convert a Symbol value to a string');
+    return cut(String(v));
+  };
+  const fontFor = (size, font) => {
+    if (font === 'digit') return [75, Math.max(1, Math.floor((size + 37) / 75))];
+    const scale = Math.max(1, Math.floor((size + 39) / 40));
+    return [clamp(Math.floor((Math.floor(size / scale) + 2) / 4) * 4, 12, 40), scale];
+  };
+  const textOpts = o => {
+    const r = { size: 24, color: theme.fg, align: 'center', font: 'gothic', outline: null };
+    if ((typeof o === 'object' && o !== null) || typeof o === 'function') {
+      if (o.size !== undefined) r.size = R(o.size);
+      r.color = color(o.color, r.color);
+      const ol = o.outline;
+      if (ol !== undefined && ol !== null) r.outline = color(ol, 0);
+      const al = o.align, fo = o.font;
+      if (typeof al === 'string') r.align = al === 'left' || al === 'right' ? al : 'center';
+      if (typeof fo === 'string') r.font = fo === 'digit' ? 'digit' : 'gothic';
+    }
+    const [base, scale] = fontFor(clamp(r.size, 8, 240), r.font);
+    r.base = base; r.scale = scale; r.px = base * scale;
+    // 本体の数字フォントは「数字の高さ」が 75px なので、ブラウザでは一回り大きい指定にして合わせる
+    r.css = r.font === 'digit' ? `700 ${Math.round(r.px * 1.36)}px "Helvetica Neue", Arial, sans-serif`
+      : `${r.px}px "Hiragino Sans", "Yu Gothic", "Noto Sans JP", sans-serif`;
+    return r;
+  };
+  const ints = (args, n) => Array.from({ length: n }, (_, i) => int(args[i], 0));
+  const fill = c => { ctx.fillStyle = css(c); };
+  const stroke = (c, w) => { ctx.strokeStyle = css(c); ctx.lineWidth = w; };
+
+  const g = {
+    width: S, height: S,
+    clear(c) { c = color(c, theme.bg); T(`clear ${css(c)}`); fill(c); ctx.fillRect(0, 0, S, S); },
+    face() { T('face'); if (face) ctx.drawImage(face, 0, 0); else { fill(theme.bg); ctx.fillRect(0, 0, S, S); } },
+    fillRect(...a) { const [x, y, w, h] = ints(a, 4), c = color(a[4], theme.fg); T(`fillRect ${x} ${y} ${w} ${h} ${css(c)}`); fill(c); ctx.fillRect(x, y, w, h); },
+    rect(...a) { const [x, y, w, h] = ints(a, 4), c = color(a[4], theme.fg); T(`rect ${x} ${y} ${w} ${h} ${css(c)}`); stroke(c, 1); ctx.strokeRect(x + .5, y + .5, w - 1, h - 1); },
+    fillRoundRect(...a) {
+      const [x, y, w, h, r0] = ints(a, 5), c = color(a[5], theme.fg), r = r0 < 0 ? 0 : r0;
+      T(`fillRoundRect ${x} ${y} ${w} ${h} ${r} ${css(c)}`);
+      fill(c); ctx.beginPath(); ctx.roundRect(x, y, w, h, Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2)); ctx.fill();
+    },
+    fillCircle(...a) { const [x, y, r] = ints(a, 3), c = color(a[3], theme.fg); if (r < 0) return; T(`fillCircle ${x} ${y} ${r} ${css(c)}`); fill(c); ctx.beginPath(); ctx.arc(x + .5, y + .5, r + .5, 0, 7); ctx.fill(); },
+    circle(...a) { const [x, y, r] = ints(a, 3), c = color(a[3], theme.fg); if (r < 0) return; T(`circle ${x} ${y} ${r} ${css(c)}`); stroke(c, 1); ctx.beginPath(); ctx.arc(x + .5, y + .5, r, 0, 7); ctx.stroke(); },
+    line(...a) {
+      const [x0, y0, x1, y1] = ints(a, 4), c = color(a[4], theme.fg), w = clamp(int(a[5], 1), 1, 40);
+      T(`line ${x0} ${y0} ${x1} ${y1} ${css(c)} ${w}`);
+      stroke(c, w); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0 + .5, y0 + .5); ctx.lineTo(x1 + .5, y1 + .5); ctx.stroke();
+    },
+    arc(...a) {
+      const [x, y, ra, rb, s0, e0] = ints(a, 6), c = color(a[6], theme.fg);
+      const ro = Math.max(ra, rb), ri = Math.min(ra, rb);
+      let s = s0, e = e0;
+      if (ri < 0 || e <= s) return;  // 進み 0 のときは何も描かない
+      if (e - s >= 360) { s = 0; e = 360; }
+      T(`arc ${x} ${y} ${ro} ${ri} ${s} ${e} ${css(c)}`);
+      const rad = d => (d - 90) * Math.PI / 180;
+      fill(c); ctx.beginPath();
+      ctx.arc(x + .5, y + .5, ro + .5, rad(s), rad(e));
+      ctx.arc(x + .5, y + .5, ri, rad(e), rad(s), true);
+      ctx.closePath(); ctx.fill();
+    },
+    fillTriangle(...a) {
+      const p = ints(a, 6), c = color(a[6], theme.fg);
+      T(`fillTriangle ${p.join(' ')} ${css(c)}`);
+      fill(c); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(p[2], p[3]); ctx.lineTo(p[4], p[5]); ctx.closePath(); ctx.fill();
+    },
+    text(...a) {
+      if (a.length < 1) return;
+      const s = text(a[0]), x = int(a[1], 0), y = int(a[2], 0), o = textOpts(a[3]);
+      T(`text "${s}" ${x} ${y} ${o.px} ${o.align} ${o.font} ${css(o.color)}` + (o.outline === null ? '' : ` outline=${css(o.outline)}`));
+      ctx.font = o.css; ctx.textAlign = o.align; ctx.textBaseline = 'middle';
+      if (o.outline !== null) { stroke(o.outline, 4 * o.scale + 1); ctx.lineJoin = 'round'; ctx.strokeText(s, x, y); }
+      fill(o.color); ctx.fillText(s, x, y);
+    },
+    textWidth(...a) {
+      if (a.length < 1) return 0;
+      const s = text(a[0]), o = textOpts(a[1]);
+      T(`textWidth "${s}" ${o.px} ${o.font}`);
+      if (init.trace) return 100;
+      ctx.font = o.css;
+      return Math.round(ctx.measureText(s).width);
+    },
+  };
+
+  const watch = {
+    vibrate(ms) { ms = clamp(int(ms, 100), 0, 1000); T(`vibrate ${ms}`); post({ type: 'vibrate', ms }); },
+    tone(freq, ms) { freq = clamp(int(freq, 880), 50, 8000); ms = clamp(int(ms, 100), 1, 2000); T(`tone ${freq} ${ms}`); post({ type: 'tone', freq, ms }); },
+    sound() { T('sound'); post({ type: 'sound' }); },
+    accel() { return { x: accel.x, y: accel.y, z: accel.z }; },
+    battery() { return init.trace ? 77 : 100; },
+    frameRate(n) { fps = clamp(int(n, 10), 1, 30); },
+    exit() { exited = true; },
+  };
+
+  const store = {
+    load() {
+      if (!storeJson) return null;
+      try { return JSON.parse(storeJson); } catch (e) { return null; }
+    },
+    save(...a) {
+      if (a.length < 1) return;
+      const j = JSON.stringify(a[0]);
+      if (typeof j !== 'string') throw new TypeError('store.save() には JSON にできる値を渡してください');
+      if (enc.encode(j).length > 4096) throw new RangeError('store.save() で保存できるのは 4096 バイトまでです');
+      storeJson = j;
+      post({ type: 'store', json: j });
+    },
+  };
+
+  const print = (...a) => {
+    if (prints++ >= 8) return;
+    const line = cut(a.map(text).join(' '));
+    T(`print ${line}`);
+    post({ type: 'print', line });
+  };
+
+  // ---- 実行の管理 ----
+  const stop = () => { stopped = true; cancel(timer); };
+  const failWith = (message, line) => { stop(); post({ type: 'error', message, line }); };
+  const fail = e => {  // スタックの中で最初に出てくる「アプリ側の行」を添える (init.offset 行目まではこの API の実装)
+    let line;
+    for (const m of String((e && e.stack) || '').matchAll(/blob:[^\s)]*?:(\d+):\d+/g)) {
+      if (+m[1] > init.offset) { line = +m[1] - init.offset; break; }
+    }
+    failWith(String(e), line);
+  };
+  const call = (name, args, budget) => {
+    if (stopped) return false;
+    if (typeof fns[name] !== 'function') return true;
+    prints = 0;
+    post({ type: 'busy', what: name + '()', ms: budget });
+    const t0 = clock.now();
+    try { fns[name](...args); } catch (e) { fail(e); return false; }
+    if (clock.now() - t0 > budget) { failWith(name + '() が制限時間を超えたので止めました'); return false; }
+    post({ type: 'idle' });
+    return true;
+  };
+  const finish = () => { stop(); post({ type: 'exit' }); };
+  const frame = () => {
+    if (!call('draw', [], 250)) return;
+    toBitmap(canvas).then(bitmap => post({ type: 'frame', bitmap }, [bitmap]));
+    if (exited) return finish();
+    timer = later(frame, 1000 / fps);
+  };
+
+  // 本体は呼び出しのたびに Promise の続きを実行し終える。記録モードでも同じ順になるよう、1 手ごとに待つ
+  const settle = () => new Promise(resolve => later(resolve, 0));
+  listen('message', async e => {
+    const m = e.data;
+    if (m.type === 'start') {
+      face = m.face || null;
+      if (!call('setup', [], 1000)) return;
+      if (!init.trace) return frame();
+      await settle();
+      for (const step of init.steps) {  // 記録モード: 決められた手順を実行して、呼び出しの記録を返す
+        if (exited) break;
+        const ok = step === 'f' ? call('draw', [], 250) : step === 'A' || step === 'B' ? call('onButton', [step], 250)
+          : step[0] === 'T' ? call('onTouch', step.split(':').slice(1).map(Number), 250) : true;
+        if (!ok) return;
+        await settle();
+      }
+      lines.push(`END fps=${fps} exit=${exited ? 1 : 0}`);
+      stop();
+      post({ type: 'trace', lines });
+    } else if (m.type === 'button') { if (call('onButton', [m.name], 250) && exited) finish(); }
+    else if (m.type === 'touch') { if (call('onTouch', [m.x, m.y], 250) && exited) finish(); }
+    else if (m.type === 'accel') accel = m.accel;
+    else if (m.type === 'theme') Object.assign(theme, m.theme);
+    else if (m.type === 'face') face = m.face || null;
+  });
+
+  // ---- アプリから見える範囲を本体と同じにする: JavaScript の標準機能と下の API 以外は隠す ----
+  const KEEP = new Set(('globalThis Object Function Array Number parseFloat parseInt Infinity NaN undefined Boolean String Symbol Date Promise RegExp ' +
+    'Error AggregateError EvalError RangeError ReferenceError SyntaxError TypeError URIError JSON Math ArrayBuffer Uint8Array Int8Array Uint16Array ' +
+    'Int16Array Uint32Array Int32Array Float32Array Float64Array Uint8ClampedArray BigUint64Array BigInt64Array DataView Map BigInt Set WeakMap WeakSet ' +
+    'WeakRef FinalizationRegistry Proxy Reflect decodeURI decodeURIComponent encodeURI encodeURIComponent escape unescape eval isFinite isNaN ' +
+    'Iterator queueMicrotask performance atob btoa').split(' '));
+  for (let o = G; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+    for (const k of Object.getOwnPropertyNames(o)) {
+      if (KEEP.has(k) || k === 'constructor') continue;
+      try { Object.defineProperty(G, k, { value: undefined, writable: true, configurable: true }); } catch (e) {}
+    }
+  }
+  const api = { g, theme, watch, store, print, console: { log: print, warn: print, error: print } };
+  for (const k in api) Object.defineProperty(G, k, { value: api[k], writable: true, configurable: true });
+
+  // アプリ本体はこの後ろにつなげて実行され、最後に __start が呼ばれる
+  Object.defineProperty(G, '__start', { configurable: true, value: (setup, draw, onButton, onTouch) => {
+    delete G.__start;
+    Object.assign(fns, { setup, draw, onButton, onTouch });
+    if (typeof draw !== 'function') return failWith('draw() がありません');
+    post({ type: 'idle' });
+  } });
+}
+
+// ---- iframe の中で動く部分: Worker を起動して見張り、画面に映す ----
+function previewHost() {
+  const canvas = document.getElementById('c'), out = canvas.getContext('bitmaprenderer');
+  const up = m => parent.postMessage(m, '*');
+  let worker = null, watchdog = 0;
+  const kill = message => {
+    clearTimeout(watchdog);
+    if (worker) worker.terminate();
+    worker = null;
+    if (message) up({ type: 'error', message });
+  };
+  // 無限ループに入った Worker は自分では止まれないので、外から時間を計って止める
+  const arm = (ms, what) => { clearTimeout(watchdog); watchdog = setTimeout(() => kill(what + ' が制限時間を超えたので止めました'), ms + 400); };
+
+  addEventListener('message', e => {
+    if (e.source !== parent) return;
+    const m = e.data;
+    if (m.type !== 'run') return worker && worker.postMessage(m);
+    kill();
+    worker = new Worker(URL.createObjectURL(new Blob([m.source], { type: 'text/javascript' })));
+    worker.onmessage = ev => {
+      const d = ev.data;
+      if (d.type === 'frame') return out.transferFromImageBitmap(d.bitmap);
+      if (d.type === 'busy') return arm(d.ms, d.what);
+      if (d.type === 'idle') return clearTimeout(watchdog);
+      if (d.type === 'error' || d.type === 'exit' || d.type === 'trace') kill();
+      up(d);
+    };
+    worker.onerror = ev => {  // 文法エラーなど、アプリの読み込み中のエラー
+      ev.preventDefault();
+      kill();
+      up({ type: 'error', message: String(ev.message || '読み込みに失敗しました').replace(/^Uncaught /, ''), rawLine: ev.lineno || undefined });
+    };
+    arm(1000, '読み込み');
+    worker.postMessage({ type: 'start', face: m.face }, m.face ? [m.face] : []);
+  });
+  canvas.addEventListener('click', e => {
+    const r = canvas.getBoundingClientRect();
+    if (worker) worker.postMessage({ type: 'touch', x: Math.round((e.clientX - r.left) * 466 / r.width), y: Math.round((e.clientY - r.top) * 466 / r.height) });
+  });
+  up({ type: 'ready' });
+}
+
+const PREVIEW_PAGE = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline'">
+<style>html,body{margin:0;height:100%;overflow:hidden}canvas{width:100%;height:100%;display:block;cursor:pointer}</style>
+</head><body><canvas id="c" width="466" height="466"></canvas><script>(${previewHost})()<\/script></body></html>`;
+
+// ---- ページ側: プレビューの起動と、Worker からの知らせの処理 ----
+const preview = {
+  frame: null, offset: 0, onTrace: null, stores: {}, storeKey: '',
+
+  send(m, transfer) { if (this.frame) this.frame.contentWindow.postMessage(m, '*', transfer || []); },
+
+  async faceBitmap() { return face.img ? createImageBitmap(faceCanvasForExport()) : null; },
+  async setFace() { const f = await this.faceBitmap(); this.send({ type: 'face', face: f }, f ? [f] : []); },
+
+  // code を新しい隔離環境で実行する。opts.trace なら決められた手順を実行して記録を返す。
+  async run(code, opts = {}) {
+    const offset = String(previewShim).split('\n').length;  // アプリの 1 行目が Worker のスクリプトの何行目の次に来るか
+    const init = {
+      offset, theme: themeNumbers(), trace: !!opts.trace, steps: opts.steps || [], store: opts.trace ? '' : (this.stores[this.storeKey] || ''),
+      accel: opts.trace ? { x: 0.25, y: -0.5, z: 0.75 } : tilt(),
+    };
+    const prefix = `(${previewShim})(${JSON.stringify(init)});\n`;
+    const source = prefix + code + '\n;__start(typeof setup === "function" ? setup : undefined, typeof draw === "function" ? draw : undefined, ' +
+      'typeof onButton === "function" ? onButton : undefined, typeof onTouch === "function" ? onTouch : undefined);\n';
+    this.offset = offset;
+    if (this.frame) this.frame.remove();
+    const frame = this.frame = document.createElement('iframe');
+    frame.setAttribute('sandbox', 'allow-scripts');
+    frame.srcdoc = PREVIEW_PAGE;
+    const ready = new Promise(resolve => { this.onReady = resolve; });
+    $('screen').append(frame);
+    await ready;
+    if (this.frame !== frame) return;
+    const f = opts.trace ? null : await this.faceBitmap();
+    this.send({ type: 'run', source, face: f }, f ? [f] : []);
+    setAppStatus('実行中', false);
+  },
+
+  onMessage(m) {
+    if (m.type === 'ready') return this.onReady && this.onReady();
+    if (m.type === 'print') return appConsole('プレビュー', m.line);
+    if (m.type === 'vibrate') return shake(m.ms);
+    if (m.type === 'tone') return beep(m.freq, m.ms);
+    if (m.type === 'sound') return playThemeSound();
+    if (m.type === 'store') { this.stores[this.storeKey] = m.json; return; }
+    if (m.type === 'exit') return setAppStatus('終了しました (watch.exit)', false);
+    if (m.type === 'trace') return this.onTrace && this.onTrace(m.lines);
+    if (m.type === 'error') {
+      const line = m.line || (m.rawLine > this.offset ? m.rawLine - this.offset : 0);
+      const where = line ? ` (${line} 行目)` : '';
+      setAppStatus('止まりました', true);
+      appConsole('プレビュー', '! ' + m.message + where);
+      if (this.onTrace) this.onTrace(['ERROR ' + m.message + where]);
+    }
+  },
+
+  // テスト用: 手順を実行して、API 呼び出しの記録(本体側のテストプログラムと同じ形式)を返す
+  trace(code, steps) {
+    return new Promise(resolve => {
+      this.onTrace = lines => { this.onTrace = null; resolve(lines); };
+      this.run(code, { trace: true, steps: steps.split(',') });
+    });
+  },
+};
+addEventListener('message', e => { if (preview.frame && e.source === preview.frame.contentWindow) preview.onMessage(e.data); });
+
+function tilt() {
+  const x = +$('tiltX').value, y = +$('tiltY').value;
+  return { x, y, z: Math.sqrt(Math.max(0, 1 - x * x - y * y)) };
+}
+
+function shake(ms) {
+  if (ms <= 0) return;
+  $('screen').classList.add('shake');
+  clearTimeout(shake.timer);
+  shake.timer = setTimeout(() => $('screen').classList.remove('shake'), ms);
+}
+
+function setAppStatus(text, isError) {
+  $('appStatus').textContent = text;
+  $('appStatus').classList.toggle('err', isError);
+}
+
+function appConsole(from, line) { appendLog('console', `${stamp()}  [${from}] ${line}`); }
+
+// ================================================================ ミニアプリの編集
+const STARTER = `// @name はじめてのアプリ
+// @description ボタンで色が変わる
+
+let on = false;
+
+function onButton(b) {
+  on = !on;
+  watch.vibrate(40);
+  print("ボタン", b);
+}
+
+function draw() {
+  g.clear();
+  g.fillCircle(233, 233, 120, on ? theme.accent : theme.surface);
+  g.text(on ? "ON" : "OFF", 233, 233, { size: 64, color: on ? theme.bg : theme.fg });
+  g.text("A か B を押す", 233, 400, { size: 20, color: theme.muted });
+}
+`;
+
+const editor = $('code');
+const appName = code => ((/^\s*\/\/\s*@name\s+(.+)$/m.exec(code.slice(0, 600)) || [])[1] || '').trim();
+
+function runEditor() {
+  const code = editor.value, size = utf8(code).length;
+  $('appSize').textContent = kB(size) + (size > MAX_APP ? '(64kB を超えています)' : '');
+  preview.storeKey = appName(code) || '(名前なし)';
+  preview.run(code);
+}
+
+function setCode(code) {
+  editor.value = code;
+  editor.scrollTop = editor.scrollLeft = 0;
+  runEditor();
+}
+
+let editTimer = 0;
+editor.addEventListener('input', () => { clearTimeout(editTimer); editTimer = setTimeout(runEditor, 600); });
+editor.addEventListener('keydown', e => {  // Tab で字下げできるようにする
+  if (e.key !== 'Tab') return;
+  e.preventDefault();
+  editor.setRangeText('  ', editor.selectionStart, editor.selectionEnd, 'end');
+  editor.dispatchEvent(new Event('input'));
+});
+$('rerun').addEventListener('click', runEditor);
+$('btnA').addEventListener('click', () => preview.send({ type: 'button', name: 'A' }));
+$('btnB').addEventListener('click', () => preview.send({ type: 'button', name: 'B' }));
+for (const id of ['tiltX', 'tiltY']) $(id).addEventListener('input', () => preview.send({ type: 'accel', accel: tilt() }));
+$('saveApp').addEventListener('click', () => download((appName(editor.value) || 'app') + '.js', editor.value, 'text/javascript'));
+$('appFile').addEventListener('change', async e => { if (e.target.files[0]) setCode(await e.target.files[0].text()); e.target.value = ''; });
+
+// 共有リンク: スクリプトを圧縮して URL の # 以降に入れる (サーバーには送られない)
+async function pipe(bytes, stream) {
+  return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+}
+async function appLink(code) {
+  const packed = await pipe(utf8(code), new CompressionStream('deflate-raw'));
+  return location.href.split('#')[0] + '#app=' + b64(packed).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function codeFromLink(text) {
+  const packed = unb64(text.replace(/-/g, '+').replace(/_/g, '/'));
+  return new TextDecoder().decode(await pipe(packed, new DecompressionStream('deflate-raw')));
+}
+$('copyAppLink').addEventListener('click', async () => copyText(await appLink(editor.value), 'アプリの共有リンク'));
+
+// ギャラリー: apps/index.json に並んでいるアプリ (プルリクエストで増やせる)
+async function loadGallery() {
+  const add = (label, title, load) => {
+    const b = document.createElement('button');
+    b.textContent = label; b.title = title;
+    b.addEventListener('click', async () => { try { setCode(await load()); } catch (e) { appConsole('サイト', '読み込めませんでした: ' + label); } });
+    $('gallery').append(b);
+  };
+  add('新規', 'ひな形から始める', async () => STARTER);
+  try {
+    const list = await (await fetch('apps/index.json')).json();
+    for (const a of list) add(a.name, a.description || '', async () => { const r = await fetch('apps/' + a.file); if (!r.ok) throw new Error(); return r.text(); });
+  } catch (e) {
+    const note = document.createElement('span');
+    note.className = 'sub';
+    note.textContent = 'サンプルは http(s) で開くと読み込めます';
+    $('gallery').append(note);
+  }
+}
+
+// 本体のアプリ置き場
+function renderSlots() {
+  const keep = $('slot').value;
+  $('slot').replaceChildren(...Array.from({ length: APP_SLOTS }, (_, i) => {
+    const a = ble.installed.find(x => x.s === i);
+    const o = document.createElement('option');
+    o.value = i;
+    o.textContent = `${i + 1}: ${a ? `${a.n} (${kB(a.z)})` : '空き'}`;
+    return o;
+  }));
+  const free = Array.from({ length: APP_SLOTS }, (_, i) => i).find(i => !ble.installed.some(a => a.s === i));
+  $('slot').value = keep !== '' ? keep : (free ?? 0);
+  refreshButtons();
+}
+$('slot').addEventListener('change', refreshButtons);
+
+// ================================================================ 操作
+action('connect', async () => {
+  if (ble.device?.gatt.connected) return ble.device.gatt.disconnect();
+  await connect();
+});
+action('sendFace', async () => sendFile(KIND.FACE, await faceJpeg(), '文字盤'));
+action('sendSound', () => sendFile(KIND.SOUND, soundFile(), '効果音'));
+action('sendColors', async () => { await sendColors(); log('テーマカラーを送りました。'); });
+action('sendTheme', async () => {
+  await sendColors();
+  if (face.img) await sendFile(KIND.FACE, await faceJpeg(), '文字盤');
+  if (sound.pcm) await sendFile(KIND.SOUND, soundFile(), '効果音');
+  log('テーマを送りました。');
+});
+action('clearFace', () => command([CMD.CLEAR, KIND.FACE, 0]));
+action('clearSound', () => command([CMD.CLEAR, KIND.SOUND, 0]));
+action('play', () => command([CMD.PLAY]));
+action('buzz', () => command([CMD.BUZZ]));
+action('syncTime', async () => { await syncTime(); log('時刻を合わせました。'); });
+action('installApp', async () => {
+  const bytes = utf8(editor.value), slot = +$('slot').value;
+  if (bytes.length > MAX_APP) throw new Error('スクリプトが 64kB を超えています');
+  await sendFile(KIND.APP, bytes, `アプリ「${appName(editor.value) || '名前なし'}」`, slot);
+  await readApps();
+  await command([CMD.RUN, slot]);
+});
+action('runApp', () => command([CMD.RUN, +$('slot').value]));
+action('homeApp', () => command([CMD.HOME]));
+action('deleteApp', async () => { await command([CMD.CLEAR, KIND.APP, +$('slot').value]); await readApps(); });
+$('saveTheme').addEventListener('click', saveThemeFile);
+$('themeFile').addEventListener('change', e => { openThemeFile(e.target.files[0]); e.target.value = ''; });
+
+// ================================================================ 起動
+async function init() {
+  if (!navigator.bluetooth) $('unsupported').style.display = 'block';
+  initThemeUi();
+  renderSlots();
+  applyThemeToPage();
+  setInterval(renderFace, 1000);
+  loadGallery();
+
+  // 共有リンク (#theme=… / #app=…) で開かれたとき
+  const hash = new URLSearchParams(location.hash.slice(1));
+  let code = STARTER;
+  if (hash.get('theme')) {
+    const c = parseThemeString(hash.get('theme'));
+    if (c) { setTheme(c); $('shared').style.display = 'block'; }
+  }
+  if (hash.get('app')) {
+    try {
+      code = await codeFromLink(hash.get('app'));
+      $('shared').style.display = 'block';
+      showTab('apps');
+    } catch (e) { log('共有リンクのアプリを読み込めませんでした。'); }
+  }
+  setCode(code);
+}
+init();
+</script>
+</body>
+</html>

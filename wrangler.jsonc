@@ -1,0 +1,8 @@
+// Cloudflare Workers に web/ をそのまま静的サイトとして載せる設定。
+//   確認: npx wrangler@4 deploy --dry-run
+//   公開: npx wrangler@4 deploy
+{
+  "name": "m5-stopwatch-face",
+  "compatibility_date": "2026-11-01",
+  "assets": { "directory": "./web" }
+}

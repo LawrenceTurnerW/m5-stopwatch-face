@@ -1,0 +1,19 @@
+{
+  "name": "quickjs",
+  "version": "0.18.0",
+  "description": "QuickJS-ng v0.18.0 (https://github.com/quickjs-ng/quickjs) のエンジン本体。上流のファイルは無改変で、ESP32 用の補助として esp32_port.c だけを足しています。",
+  "license": "MIT",
+  "build": {
+    "flags": [
+      "-std=gnu11",
+      "-w"
+    ],
+    "srcFilter": [
+      "+<quickjs.c>",
+      "+<libregexp.c>",
+      "+<libunicode.c>",
+      "+<dtoa.c>",
+      "+<esp32_port.c>"
+    ]
+  }
+}

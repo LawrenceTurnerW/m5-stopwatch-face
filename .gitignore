@@ -1,0 +1,10 @@
+.pio/
+.vscode/
+tools/host-test/obj/
+tools/host-test/host_test
+node_modules/
+.wrangler/
+web/firmware/
+HANDOFF.md
+.DS_Store
+tools/host-test/host_test.dSYM/

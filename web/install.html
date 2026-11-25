@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>本体の準備 - StopWatch 着せ替え</title>
+<style>
+  :root {
+    --bg: #101216; --card: #1a1d24; --text: #e8eaf0; --sub: #9aa1b0; --accent: #5cc8ff; --accent2: #ffa500;
+    --line: color-mix(in srgb, var(--sub) 28%, var(--card));
+    --field: color-mix(in srgb, var(--bg) 70%, var(--card));
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.7 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 14px 24px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 18px; margin: 0; flex: 1; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+  a { color: var(--accent); }
+  main { max-width: 820px; margin: 0 auto; padding: 24px 16px 60px; display: grid; gap: 18px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; min-width: 0; }
+  section.notice { border-color: var(--accent2); }
+  p { margin: 0 0 10px; }
+  p:last-child, ul:last-child { margin-bottom: 0; }
+  ul { margin: 0 0 10px; padding-left: 1.3em; }
+  .sub { color: var(--sub); font-size: 13px; }
+  .step { display: inline-grid; place-items: center; width: 26px; height: 26px; margin-right: 8px; border-radius: 50%;
+    background: var(--accent); color: var(--bg); font-weight: 700; font-size: 14px; }
+  .button, button { font: inherit; color: var(--text); background: color-mix(in srgb, var(--sub) 18%, var(--card));
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 13px; cursor: pointer; text-decoration: none; display: inline-block; }
+  .button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+  .cmd { display: flex; align-items: stretch; gap: 8px; margin: 8px 0 10px; }
+  .cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: pre; background: var(--field); border: 1px solid var(--line);
+    border-radius: 8px; padding: 9px 12px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+  .cmd button { flex: none; min-width: 84px; }
+  code.inline { background: var(--field); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px;
+    font: 13px ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+  .tools { display: flex; gap: 4px; margin-bottom: 4px; }
+  .tools button { background: none; border-color: transparent; color: var(--sub); }
+  .tools button.on { color: var(--text); border-color: var(--line); background: var(--field); }
+  #hash { overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<header>
+  <h1>本体の準備</h1>
+  <a class="button" href="./">着せ替えサイトへ</a>
+  <a class="button" href="https://github.com/LawrenceTurnerW/m5-stopwatch-face">GitHub</a>
+</header>
+
+<main>
+  <section>
+    <p>M5Stack StopWatch を着せ替え時計にするには、専用のファームウェアを本体に書き込みます。このページの手順を上から進めると、10 分ほどで終わります。</p>
+    <p class="sub">必要なもの: M5Stack StopWatch、データ通信のできる USB-C ケーブル、PC(macOS / Windows / Linux)。</p>
+  </section>
+
+  <section class="notice">
+    <h2>先に知っておくこと</h2>
+    <ul>
+      <li>M5Stack 公式のものではない、個人が作ったファームウェアです。無保証です。</li>
+      <li>いま本体に入っているファームウェアは上書きされます。元に戻したいときのために、手順 2 のバックアップを取っておくことをおすすめします。</li>
+      <li>本体との Bluetooth 通信には認証がありません。電波の届く範囲にいる人なら誰でも、このサイトからテーマやアプリを送れます。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="step">1</span>書き込みツールを用意する</h2>
+    <p>Espressif 公式の <a href="https://github.com/espressif/esptool">esptool</a> を使います。どちらか片方で構いません。</p>
+    <div class="tools" id="tools">
+      <button data-tool="uv" class="on">uv を使う</button>
+      <button data-tool="pip">pip を使う</button>
+    </div>
+    <div data-for="uv">
+      <p class="sub"><a href="https://docs.astral.sh/uv/">uv</a> が入っていれば、インストールは要りません。<code class="inline">uvx esptool</code> がその場で取ってきて実行します。</p>
+      <div class="cmd"><code>uvx esptool version</code><button>コピー</button></div>
+    </div>
+    <div data-for="pip" hidden>
+      <p class="sub">Python 3.10 以降が必要です。</p>
+      <div class="cmd"><code>pip install esptool</code><button>コピー</button></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="step">2</span>ダウンロードモードにして、いまの中身をバックアップする</h2>
+    <p>本体を USB でつなぎ、<b>電源ボタンを約 2 秒長押し</b>します。内部の緑の LED が点いたら離してください。これで書き込みを受け付ける状態になります。</p>
+    <p>続けて、いまのフラッシュ全体(16 MB)をファイルに保存します。数分かかります。</p>
+    <div class="cmd"><code data-cmd="--chip esp32s3 read-flash 0 ALL stopwatch-backup.bin"></code><button>コピー</button></div>
+    <p class="sub">ポートは自動で探します。見つからないときは <code class="inline">--port /dev/cu.usbmodem101</code>(Windows なら <code class="inline">--port COM5</code> など)を <code class="inline">--chip</code> の前に足してください。別のアプリがシリアルポートを開いていると失敗します。</p>
+  </section>
+
+  <section>
+    <h2><span class="step">3</span>ファームウェアをダウンロードする</h2>
+    <p><a class="button primary" href="firmware/m5-stopwatch-face.bin" download>m5-stopwatch-face.bin をダウンロード</a></p>
+    <p class="sub">約 3.9 MB。SHA-256: <span id="hash">(読み込み中)</span></p>
+    <p class="sub">ブートローダー・パーティション表・アプリを 1 つにまとめたファイルです。ソースコードは <a href="https://github.com/LawrenceTurnerW/m5-stopwatch-face">GitHub</a> にあり、自分でビルドすることもできます。</p>
+  </section>
+
+  <section>
+    <h2><span class="step">4</span>書き込む</h2>
+    <p>ダウンロードしたファイルのあるフォルダで実行します。本体がダウンロードモードから抜けていたら、もう一度電源ボタンを長押ししてください。</p>
+    <div class="cmd"><code data-cmd="--chip esp32s3 --baud 921600 write-flash 0x0 m5-stopwatch-face.bin"></code><button>コピー</button></div>
+    <p class="sub"><code class="inline">Hash of data verified.</code> と出れば成功です。30 秒ほどで終わります。途中で止まっても、ダウンロードモードは本体の ROM の機能なので、やり直せます。</p>
+  </section>
+
+  <section>
+    <h2><span class="step">5</span>起動して、サイトからつなぐ</h2>
+    <p>書き込みが終わると本体が再起動して、時計が表示されます。画面が暗いままなら、電源ボタンを 1 回押してください。</p>
+    <p>PC か Android の Chrome / Edge で<a href="./">着せ替えサイト</a>を開き、「接続」から <code class="inline">M5StopWatch</code> を選びます。時刻は接続したときに自動で合います。</p>
+    <p class="sub">本体の操作: 時計画面で B = アプリ一覧、A と B を同時に長押し = いつでも時計に戻る。</p>
+  </section>
+
+  <section>
+    <h2>元に戻すには</h2>
+    <p>ダウンロードモードにして、手順 2 で取ったバックアップを書き戻します。</p>
+    <div class="cmd"><code data-cmd="--chip esp32s3 --baud 921600 write-flash 0x0 stopwatch-backup.bin"></code><button>コピー</button></div>
+    <p class="sub">バックアップが無い場合は、M5Stack が公式に配布しているファームウェアを書き込んでください。</p>
+  </section>
+</main>
+
+<script>
+// 選んだツールに合わせてコマンドの先頭を切り替える
+const PREFIX = { uv: 'uvx esptool', pip: 'esptool' };
+function setTool(tool) {
+  for (const b of document.querySelectorAll('#tools button')) b.classList.toggle('on', b.dataset.tool === tool);
+  for (const d of document.querySelectorAll('[data-for]')) d.hidden = d.dataset.for !== tool;
+  for (const c of document.querySelectorAll('code[data-cmd]')) c.textContent = PREFIX[tool] + ' ' + c.dataset.cmd;
+}
+for (const b of document.querySelectorAll('#tools button')) b.addEventListener('click', () => setTool(b.dataset.tool));
+setTool('uv');
+
+for (const b of document.querySelectorAll('.cmd button')) {
+  b.addEventListener('click', async () => {
+    const text = b.previousElementSibling.textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      b.textContent = 'コピーしました';
+    } catch (e) {  // クリップボードが使えないときは、選択して手でコピーできるようにする
+      getSelection().selectAllChildren(b.previousElementSibling);
+      b.textContent = '選択しました';
+    }
+    setTimeout(() => { b.textContent = 'コピー'; }, 1500);
+  });
+}
+
+fetch('firmware/m5-stopwatch-face.bin.sha256')
+  .then(r => r.ok ? r.text() : Promise.reject())
+  .then(t => { document.getElementById('hash').textContent = t.trim(); })
+  .catch(() => { document.getElementById('hash').textContent = '(このコピーには書き込み用ファイルが入っていません。tools/make-firmware.sh で作れます)'; });
+</script>
+</body>
+</html>
