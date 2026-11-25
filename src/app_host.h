@@ -36,6 +36,10 @@ inline void appFontFor(int size, AppFont font, int& base, int& scale) {
   if (base > 40) base = 40;
 }
 
+// 電源の状態。アプリには watch.power() の文字列 ("unknown" / "battery" / "charging" / "usb") で渡す。
+// USB は「つながっているが充電はしていない」(満充電など)。
+enum AppPower { POWER_UNKNOWN = 0, POWER_BATTERY, POWER_CHARGING, POWER_USB };
+
 class AppHost {
  public:
   virtual ~AppHost() {}
@@ -63,6 +67,7 @@ class AppHost {
   virtual void sound() = 0;              // テーマの効果音
   virtual void accel(float xyz[3]) = 0;  // 加速度 (G)
   virtual int  battery() = 0;            // 0〜100
+  virtual AppPower power() = 0;          // 電池で動いているか、充電中か
   virtual bool storeLoad(std::string& json) = 0;
   virtual bool storeSave(const std::string& json) = 0;
   virtual void print(const char* line) = 0;

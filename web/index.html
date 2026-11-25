@@ -217,6 +217,7 @@
         <tr><td><code>g.textWidth(文字, { size, font })</code></td><td>文字の幅(px)</td></tr>
         <tr><td><code>watch.vibrate(ミリ秒)</code> <code>watch.tone(周波数, ミリ秒)</code> <code>watch.sound()</code></td><td>振動 / ビープ音 / テーマの効果音</td></tr>
         <tr><td><code>watch.accel()</code> <code>watch.battery()</code></td><td>加速度 <code>{ x, y, z }</code>(G) / 電池残量(%)</td></tr>
+        <tr><td><code>watch.power()</code></td><td>電源の状態。<code>"battery"</code>(電池で動作) / <code>"charging"</code>(充電中) / <code>"usb"</code>(USB につながっているが充電していない) / <code>"unknown"</code></td></tr>
         <tr><td><code>watch.frameRate(回数)</code> <code>watch.exit()</code></td><td><code>draw()</code> の頻度(1〜30) / 時計に戻る</td></tr>
         <tr><td><code>store.load()</code> <code>store.save(値)</code></td><td>アプリごとの保存領域(JSON で 4096 バイトまで)</td></tr>
         <tr><td><code>print(…)</code></td><td>下のコンソールに出す。<code>console.log</code> でも同じ</td></tr>
@@ -910,6 +911,7 @@ function previewShim(init) {
     sound() { T('sound'); post({ type: 'sound' }); },
     accel() { return { x: accel.x, y: accel.y, z: accel.z }; },
     battery() { return init.trace ? 77 : 100; },
+    power() { return init.trace ? 'charging' : 'usb'; },  // プレビューは PC なので「USB につながっている」扱い
     frameRate(n) { fps = clamp(int(n, 10), 1, 30); },
     exit() { exited = true; },
   };

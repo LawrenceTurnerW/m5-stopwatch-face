@@ -1,5 +1,5 @@
 // @name 電池メーター
-// @description 電池の残量と、このアプリを開いてからの減りぐあいを表示する
+// @description 電池の残量、充電中かどうか、開いてからの減りぐあいを表示する
 let first = -1, startedAt = 0;
 
 function setup() {
@@ -24,5 +24,8 @@ function draw() {
   g.text("%", 233, 275, { size: 32, color: theme.muted });
   let note = `${minutes} 分で ${used > 0 ? "-" + used : used < 0 ? "+" + -used : "±0"}%`;
   if (used > 0 && minutes >= 5) note += `  あと約 ${Math.round(level / used * minutes / 6) / 10} 時間`;
-  g.text(note, 233, 335, { size: 20, color: theme.muted });
+  g.text(note, 233, 365, { size: 20, color: theme.muted });
+  const power = watch.power();
+  const label = { charging: "充電中", usb: "USB につながっている", battery: "電池で動作中" }[power] || "";
+  g.text(label, 233, 325, { size: 24, color: power === "charging" ? theme.accent2 : theme.fg });
 }

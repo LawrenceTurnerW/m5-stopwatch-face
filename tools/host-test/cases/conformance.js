@@ -55,7 +55,7 @@ function draw() {
   watch.tone(99999, 99999);
   watch.sound();
   const a = watch.accel();
-  print("accel", a.x, a.y, a.z, "battery", watch.battery());
+  print("accel", a.x, a.y, a.z, "battery", watch.battery(), "power", watch.power());
   print("multi", 1, true, null, undefined, [1, 2], { a: 1 });
 }
 function onButton(b) { print("button", b); }

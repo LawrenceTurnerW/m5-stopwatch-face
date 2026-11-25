@@ -325,6 +325,11 @@ API(w_accel) {
 
 API(w_battery) { return JS_NewInt32(ctx, clampInt(self(ctx)->host().battery(), 0, 100)); }
 
+API(w_power) {
+  static const char* const NAME[] = {"unknown", "battery", "charging", "usb"};
+  return JS_NewString(ctx, NAME[clampInt((int)self(ctx)->host().power(), 0, 3)]);
+}
+
 API(w_frameRate) {
   int fps;
   if (!argInt(ctx, argc, argv, 0, 10, fps)) return JS_EXCEPTION;
@@ -434,6 +439,7 @@ void AppRuntime::installApi() {
   def(ctx_, w, "sound", w_sound, 0);
   def(ctx_, w, "accel", w_accel, 0);
   def(ctx_, w, "battery", w_battery, 0);
+  def(ctx_, w, "power", w_power, 0);
   def(ctx_, w, "frameRate", w_frameRate, 1);
   def(ctx_, w, "exit", w_exit, 0);
   JS_SetPropertyStr(ctx_, global, "watch", w);

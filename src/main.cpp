@@ -177,6 +177,25 @@ static void freeRx() {
   rx = Transfer();
 }
 
+// 電源の状態と電池残量。I2C で読むので、2 秒に 1 回だけ読み直す。
+static AppPower powerState   = POWER_UNKNOWN;
+static int      batteryLevel = -1;  // -1 はまだ読んでいない
+static void readPower(bool force = false) {
+  static uint32_t readAt = 0;
+  uint32_t        now    = millis();
+  if (!force && batteryLevel >= 0 && now - readAt < 2000) return;
+  readAt       = now;
+  batteryLevel = constrain((int)M5.Power.getBatteryLevel(), 0, 100);
+  m5::M5PM1_Class::pwr_src_t source;
+  if (!M5.Power.M5pm1.getPowerSource(&source)) {
+    powerState = POWER_UNKNOWN;
+  } else if (!(source & (m5::M5PM1_Class::vin | m5::M5PM1_Class::vinout))) {
+    powerState = POWER_BATTERY;
+  } else {
+    powerState = M5.Power.getChargeState() == m5::charge_state_t::charging ? POWER_CHARGING : POWER_USB;
+  }
+}
+
 static void buzz(uint32_t ms) {
   if (ms == 0) return;
   M5.Power.setVibration(200);
@@ -395,7 +414,14 @@ class DeviceHost : public AppHost {
   void accel(float a[3]) override {
     if (M5.Imu.isEnabled()) M5.Imu.getAccel(&a[0], &a[1], &a[2]);
   }
-  int battery() override { return M5.Power.getBatteryLevel(); }
+  int battery() override {
+    readPower();
+    return batteryLevel;
+  }
+  AppPower power() override {
+    readPower();
+    return powerState;
+  }
   bool storeLoad(std::string& json) override {
     size_t   len = 0;
     uint8_t* p   = appSlot >= 0 ? readFile(dataPath(appSlot).c_str(), len) : nullptr;
@@ -672,6 +698,31 @@ static void outlinedText(const char* s, int x, int y) {
   frame.drawString(s, x, y);
 }
 
+// 電池の残量と充電の状態を、(cx, y) を中心に 1 行で描く
+static void drawPower(int cx, int y) {
+  readPower();
+  bool        bolt   = powerState == POWER_CHARGING;
+  const char* suffix = bolt ? " 充電中" : powerState == POWER_USB ? " USB" : "";
+  char        text[32];
+  snprintf(text, sizeof(text), "%d%%%s", batteryLevel, suffix);
+  frame.setFont(&fonts::lgfxJapanGothic_24);
+  const int iconW = 40, boltW = bolt ? 18 : 0;
+  int       total = boltW + iconW + 8 + frame.textWidth(text), x = cx - total / 2;
+  frame.fillRoundRect(x - 12, y - 18, total + 24, 36, 18, rgb(theme.bg));  // 文字盤画像の上でも読めるように下地を敷く
+  if (bolt) {  // 稲妻の印
+    frame.fillTriangle(x + 9, y - 12, x + 1, y + 2, x + 8, y + 2, rgb(theme.accent2));
+    frame.fillTriangle(x + 5, y + 12, x + 13, y - 2, x + 6, y - 2, rgb(theme.accent2));
+    x += boltW;
+  }
+  frame.drawRoundRect(x, y - 9, 34, 18, 4, rgb(theme.muted));
+  frame.fillRect(x + 35, y - 4, 3, 8, rgb(theme.muted));
+  frame.fillRect(x + 3, y - 6, 28 * batteryLevel / 100, 12, rgb(batteryLevel <= 20 && !bolt ? theme.accent2 : theme.accent));
+  frame.setTextDatum(middle_left);
+  frame.setTextColor(rgb(theme.fg));
+  frame.drawString(text, x + iconW + 8, y);
+  frame.setTextDatum(middle_center);
+}
+
 static void drawClock(bool force) {
   static time_t lastDrawn = 0;
   static int    lastHour  = -1;
@@ -712,6 +763,8 @@ static void drawClock(bool force) {
   frame.setFont(&fonts::lgfxJapanGothic_28);
   snprintf(buf, sizeof(buf), "%d/%d (%s)", t.tm_mon + 1, t.tm_mday, WD[t.tm_wday]);
   outlinedText(buf, cx, cy + 70);
+
+  drawPower(cx, cy - 96);
 
   if (bleConnected) {  // 接続中の印
     frame.fillCircle(cx, H - 60, 8, rgb(theme.bg));

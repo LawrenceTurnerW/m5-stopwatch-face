@@ -55,6 +55,7 @@ class TraceHost : public AppHost {
   void sound() override { out("sound"); }
   void accel(float a[3]) override { a[0] = 0.25f, a[1] = -0.5f, a[2] = 0.75f; }
   int  battery() override { return 77; }
+  AppPower power() override { return POWER_CHARGING; }
   bool storeLoad(std::string& json) override {
     json = stored;
     return !stored.empty();
