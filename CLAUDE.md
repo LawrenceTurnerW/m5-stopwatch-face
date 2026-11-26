@@ -14,6 +14,8 @@ cd web && python3 -m http.server 8000                                  # サイ�
 sh tools/host-test/run.sh                                              # サンプルと制限のテスト
 node tools/browser-test/test.js                                        # サイトの通しテスト (playwright が必要)
 sh tools/make-firmware.sh                                              # 配布用の書き込みファイル
+npx wrangler@4 dev --port 8787                                         # サイトと API を手元で動かす (.dev.vars が要る。README 参照)
+node tools/api-test/test.js                                            # API のテスト (上の dev を動かした状態で)
 npx wrangler@4 deploy                                                  # サイトの公開
 ```
 
@@ -25,3 +27,5 @@ npx wrangler@4 deploy                                                  # サイ�
 - `lib/quickjs/` は上流のファイルを無改変で置いている。手を入れず、ESP32 用の補助は `esp32_port.c` に書く。
 - 実機で確かめたことと、まだ確かめていないことを区別して `README.md` に書く。
 - ファームウェアを変えたら `tools/make-firmware.sh` で配布用ファイルを作り直してから公開する。サイトの公開と GitHub への push は、ユーザーに確認してから行う。
+- API キーや管理者トークンは `wrangler secret` と `.dev.vars`(git の対象外)にだけ置く。画面や会話、コミットに出さない。
+- AI に渡す説明文(`worker/prompt.js`)は API の一覧を写したもの。API を変えたらここも直す。
