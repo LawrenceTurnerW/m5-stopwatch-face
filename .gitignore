@@ -8,3 +8,5 @@ web/firmware/
 HANDOFF.md
 .DS_Store
 tools/host-test/host_test.dSYM/
+.dev.vars
+.secrets/
