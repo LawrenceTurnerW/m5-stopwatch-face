@@ -56,7 +56,8 @@ const strip = lines => lines.filter(l => !l.startsWith('storeSave')).map(l => l.
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
-  page.on('console', m => m.type() === 'error' && errors.push(m.text()));
+  // このテストは静的サーバーで動かすので /api/ は 404 になる (投稿の欄は出ないのが正しい)。それだけは数えない。
+  page.on('console', m => m.type() === 'error' && !/\/api\//.test(m.location().url) && errors.push(m.text()));
   await page.addInitScript({ path: path.join(__dirname, 'mock.js') });
   await page.goto('http://127.0.0.1:8765/index.html');
   const tab = name => page.click(`nav button[data-tab=${name}]`);
@@ -79,10 +80,11 @@ const strip = lines => lines.filter(l => !l.startsWith('storeSave')).map(l => l.
     assert(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()) === '#fff5f7', 'プリセットでページの配色が変わる');
     await page.fill('#themeText', '0a0a0a 222222 fafafa 777777 00ff88 ff0066'); await page.dispatchEvent('#themeText', 'input');
     assert(await page.inputValue('#color-accent') === '#00ff88', '貼り付けた文字列から色を取り込む');
-    await page.click('#sendColors'); await idle();
+    await page.click('#sendTheme'); await idle();
     m = await mock();
     assert(JSON.stringify(m.theme) === JSON.stringify([10, 10, 10, 34, 34, 34, 250, 250, 250, 119, 119, 119, 0, 255, 136, 255, 0, 102]), 'SET_THEME で 6 色 x RGB を送る');
-    assert(m.commands.at(-1)[0] === 0x14 && m.commands.at(-1).length === 19, 'SET_THEME のコマンド長');
+    assert(m.commands.at(-1)[0] === 0x14 && m.commands.at(-1).length === 19, 'SET_THEME のコマンド長 (転送の最後に送る)');
+    assert(m.commands.slice(-3, -1).every(c => c[0] === m.commands.at(-2)[0]) && m.files.length === 0, '画像も音も選んでいなければ、本体の文字盤と効果音を消す');
 
     console.log('文字盤と効果音');
     await page.setInputFiles('#imgFile', PHOTO);
@@ -90,45 +92,38 @@ const strip = lines => lines.filter(l => !l.startsWith('storeSave')).map(l => l.
     for (const [mtu, mode] of [[247, 'nr'], [23, 'nr'], [517, 'wr']]) {
       await page.evaluate(v => { window.__mockCfg.mtu = v; window.__mock.maxChunk = 0; }, mtu);
       await tab('transfer'); await page.selectOption('#mode', mode); await tab('theme');
-      await page.click('#sendFace'); await idle();
+      await page.click('#sendTheme'); await idle();
       const row = await lastRow(); await tab('theme');
       m = await mock();
       assert(row[8] === 'OK' && m.maxChunk === Math.min(mtu - 3, 512), `MTU ${mtu} / ${mode}: 送信成功、チャンク ${m.maxChunk}`);
     }
     const jpg = Buffer.from(m.files[0].b64, 'base64');
     const begin = Buffer.from(m.commands.find(c => c[0] === 1));
+    const transparent = await page.evaluate(async () => { const c = document.createElement('canvas'); c.width = c.height = 64; face.img = await createImageBitmap(c); const out = faceCanvasForExport().getContext('2d').getImageData(233, 233, 1, 1).data; return [...out].slice(0, 3).join(); });
+    assert(transparent === '10,10,10', '透過のある画像は、透けた部分が背景色になる');
+    await page.setInputFiles('#imgFile', PHOTO); await page.waitForTimeout(500);
     assert(begin.readUInt32LE(3) === jpg.length && begin.readUInt32LE(7) === zlib.crc32(jpg), 'BEGIN のサイズと CRC32 が zlib と一致');
     assert(jpg[0] === 0xFF && jpg[1] === 0xD8 && m.files.every(f => f.b64 === m.files[0].b64), 'JPEG が 3 回とも同じバイト列で届く');
     await page.evaluate(() => { window.__mockCfg.mtu = 247; });
     await tab('transfer'); await page.selectOption('#mode', 'nr'); await tab('theme');
-    await page.setInputFiles('#sndFile', TONE);
-    await page.waitForFunction(() => !document.getElementById('preview').disabled);
+    await page.click('#sounds button:text-is("チャイム")');
+    await page.waitForFunction(() => document.getElementById('sndSize').textContent.includes('kB'));
+    const sndSize = await page.textContent('#sndSize'), sndSamples = await page.evaluate(() => sound.pcm.length);
     const before = (await mock()).files.length;
     await page.click('#sendTheme'); await idle();
     m = await mock();
     const kinds = m.files.slice(before).map(f => f.kind);
-    assert(JSON.stringify(kinds) === '[1,2]' && m.commands.some((c, i) => c[0] === 0x14 && i >= 5), '「まとめて送る」で色・文字盤・効果音を送る');
+    assert(JSON.stringify(kinds) === '[1,2]' && m.commands.at(-1)[0] === 0x14, '「本体に転送」で文字盤・効果音・色をまとめて送る');
     const snd = Buffer.from(m.files.at(-1).b64, 'base64');
-    assert(snd.subarray(0, 4).toString() === 'SWP1' && snd.readUInt32LE(4) === 16000 && snd.length === 8 + 1.5 * 16000 * 2, '効果音の形式と長さ');
-
-    console.log('テーマファイル');
-    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#saveTheme')]);
-    const themePath = path.join(TMP, 'theme.swtheme.json');
-    await dl.saveAs(themePath);
-    const tf = JSON.parse(fs.readFileSync(themePath, 'utf8'));
-    assert(tf.format === 'stopwatch-theme' && tf.colors.length === 6 && tf.face.startsWith('data:image/jpeg;base64,') && tf.sound.rate === 16000, 'テーマファイルに色・文字盤・効果音が入る');
-    await page.click('#presets button:has-text("モノクロ")'); await page.click('#removeFace');
-    await page.setInputFiles('#themeFile', themePath);
-    await page.waitForFunction(() => document.getElementById('color-accent').value === '#00ff88' && !document.getElementById('removeFace').disabled);
-    assert(await page.textContent('#sndSize') === '46.9 kB', 'テーマファイルから色・文字盤・効果音を復元する');
+    assert(snd.subarray(0, 4).toString() === 'SWP1' && snd.readUInt32LE(4) === 16000 && snd.length === 8 + sndSamples * 2 && sndSamples > 8000, '効果音の形式と長さ');
 
     console.log('異常系');
     await page.evaluate(() => { window.__mockCfg.corrupt = true; });
-    await page.click('#sendFace'); await idle();
+    await page.click('#sendTheme'); await idle();
     assert((await lastRow())[8].includes('CRC'), 'データ化けを CRC エラーとして表示');
     await tab('theme');
     await page.evaluate(() => { window.__mockCfg.corrupt = false; window.__mockCfg.dropChunk = 3; });
-    await page.click('#sendFace'); await idle();
+    await page.click('#sendTheme'); await idle();
     assert((await lastRow())[8].includes('応答がありません') && (await mock()).commands.at(-1)[0] === 3, '欠落をタイムアウトとして表示し ABORT を送る');
     await page.evaluate(() => { window.__mockCfg.dropChunk = -1; });
 
@@ -137,6 +132,8 @@ const strip = lines => lines.filter(l => !l.startsWith('storeSave')).map(l => l.
     const samples = JSON.parse(fs.readFileSync(P + '/web/apps/index.json', 'utf8')).length;
     await page.waitForFunction(n => document.querySelectorAll('#gallery button').length === n + 1, samples);
     assert(true, `ギャラリーに「新規」とサンプル ${samples} 個が並ぶ`);
+    await page.click('#gallery button:text-is("新規")');  // ひな形は onButton で print する
+    await page.waitForTimeout(1200);
     await page.click('#btnA');
     await waitConsole('[プレビュー] ボタン A');
     assert(true, 'プレビューのボタン A がアプリの onButton に届く');
@@ -236,6 +233,7 @@ try { print("up", String(globalThis.constructor)); } catch (e) { print("up-error
 
     await page.click('#connect'); await idle();
     assert(await page.textContent('#state') === '未接続' && await page.isDisabled('#installApp'), '切断すると未接続に戻る');
+    assert(!(await page.isVisible('#community')) && !(await page.isVisible('#postApp')) && !(await page.isVisible('#ai')) && !(await page.isVisible('#aiTheme')) && !(await page.isVisible('#themePosts')) && !(await page.isVisible('#postTheme')), 'API のない場所では投稿と AI の欄を出さない');
     assert(errors.length === 0, 'ページのエラーなし ' + errors.join(' / '));
 
     console.log(`\n${passed} 項目すべて成功`);
