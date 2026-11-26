@@ -2,8 +2,8 @@
 
 M5Stack StopWatch を、ブラウザから着せ替えられる時計にするプロジェクトです。Web Bluetooth でつなぎ、テーマ(色・文字盤画像・効果音)とミニアプリ(JavaScript)を送り込みます。サーバーは使いません。
 
-- **サイト**: https://m5-stopwatch-face.lawrenceturnerw.workers.dev
-- **本体の準備(ファームウェアの書き込み手順)**: https://m5-stopwatch-face.lawrenceturnerw.workers.dev/install
+- **サイト**: https://m5stopwatch.lawrenceturnerw.com
+- **本体の準備(ファームウェアの書き込み手順)**: https://m5stopwatch.lawrenceturnerw.com/install
 
 M5Stack 公式のものではない、個人のプロジェクトです。無保証です。
 
@@ -35,8 +35,8 @@ M5Stack 公式のものではない、個人のプロジェクトです。無保
 
 ## 使い方
 
-1. [本体の準備](https://m5-stopwatch-face.lawrenceturnerw.workers.dev/install)の手順でファームウェアを書き込みます。自分でビルドする場合は下の「ビルド」を見てください。
-2. PC か Android の Chrome / Edge で[サイト](https://m5-stopwatch-face.lawrenceturnerw.workers.dev)を開きます。
+1. [本体の準備](https://m5stopwatch.lawrenceturnerw.com/install)の手順でファームウェアを書き込みます。自分でビルドする場合は下の「ビルド」を見てください。
+2. PC か Android の Chrome / Edge で[サイト](https://m5stopwatch.lawrenceturnerw.com)を開きます。
 3. 「接続」を押して `M5StopWatch` を選びます。時刻は接続時に自動で合います。
 
 本体の操作は次のとおりです。

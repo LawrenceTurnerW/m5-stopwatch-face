@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+// Web Bluetooth は https でしか使えないので、http で開かれたら https に移る (手元の確認用は除く)
+if (location.protocol === 'http:' && !/^(localhost|127\.|\[::1\])/.test(location.host)) location.replace('https:' + location.href.slice(5));
+</script>
 <title>StopWatch 着せ替え</title>
 <style>
   /* 色はすべてテーマカラーから決まる (applyThemeToPage が上書きする) */

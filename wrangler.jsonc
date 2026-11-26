@@ -7,6 +7,9 @@
   "name": "m5-stopwatch-face",
   "main": "worker/index.js",
   "compatibility_date": "2026-11-01",
+  // 独自ドメイン。これまでの workers.dev の URL も残す
+  "routes": [{ "pattern": "m5stopwatch.lawrenceturnerw.com", "custom_domain": true }],
+  "workers_dev": true,
   "assets": { "directory": "./web", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
   "d1_databases": [
     { "binding": "DB", "database_name": "m5-stopwatch-face", "database_id": "158118bf-30ea-4873-b172-a45d4559d374", "migrations_dir": "migrations" }
