@@ -89,7 +89,7 @@ static std::atomic<bool>    commitPending{false};  // true の間 rx.buf は loo
 
 // BLE から届いた要求。実際の処理は loop() で行う
 static std::atomic<bool>     reqPlay{false}, reqBuzz{false}, reqSetTime{false}, reqTheme{false}, reqHome{false};
-static std::atomic<uint16_t> reqClear{0};  // (kind << 8) | slot
+static std::atomic<uint16_t> reqClear{0};  // 消すものの集まり: bit0 = 文字盤、bit1 = 効果音、bit(2+n) = アプリ置き場 n
 static std::atomic<int>      reqRun{-1};
 static std::atomic<uint32_t> pendingEpoch{0};
 static std::atomic<int16_t>  pendingTz{0};
@@ -119,12 +119,22 @@ static int16_t     tzOffsetMin = 540;  // 既定は JST
 static uint32_t    buzzUntil = 0;
 
 // ---- 画面の状態 -----------------------------------------------------------------
-enum Mode { MODE_HOME, MODE_LIST, MODE_APP, MODE_MESSAGE };
+enum Mode { MODE_HOME, MODE_LIST, MODE_SETTINGS, MODE_APP, MODE_MESSAGE };
 static Mode        mode = MODE_HOME;
 static bool        redraw = true;
 static int         listIndex = 0;
 static uint32_t    modeSince = 0;
 static std::string message;
+
+// ---- 設定 (アプリ一覧の先頭の「設定」で変える。NVS に保存) ---------------------------
+static const uint8_t BRIGHT_LEVEL[] = {0, 40, 100, 160, 210, 255};  // 明るさ 1〜5
+static const uint8_t VOLUME_LEVEL[] = {0, 40, 80, 120, 160, 255};   // 音量 0 (消音)〜5
+static uint8_t       brightLevel = 3, volumeLevel = 4;
+static bool          vibrateOn   = true;
+static void applySettings() {
+  M5.Display.setBrightness(BRIGHT_LEVEL[brightLevel]);
+  M5.Speaker.setVolume(VOLUME_LEVEL[volumeLevel]);
+}
 
 struct AppEntry {
   bool        used = false;
@@ -197,7 +207,7 @@ static void readPower(bool force = false) {
 }
 
 static void buzz(uint32_t ms) {
-  if (ms == 0) return;
+  if (ms == 0 || !vibrateOn) return;
   M5.Power.setVibration(200);
   buzzUntil = millis() + ms;
 }
@@ -412,7 +422,11 @@ class DeviceHost : public AppHost {
   void tone(int freq, int ms) override { M5.Speaker.tone(freq, ms, 1, true); }
   void sound() override { playSound(); }
   void accel(float a[3]) override {
-    if (M5.Imu.isEnabled()) M5.Imu.getAccel(&a[0], &a[1], &a[2]);
+    // センサーは画面に対して 90 度回って付いている (実機で確認)。画面の向きに直して渡す:
+    // x は右 (3 時側) を下げると正、y は上 (12 時側) を下げると正。
+    float x = 0, y = 0, z = 0;
+    if (M5.Imu.isEnabled()) M5.Imu.getAccel(&x, &y, &z);
+    a[0] = -y, a[1] = x, a[2] = z;
   }
   int battery() override {
     readPower();
@@ -614,7 +628,10 @@ class CtrlCallbacks : public NimBLECharacteristicCallbacks {
         reqBuzz = true;
         break;
       case CMD_CLEAR:
-        if (n >= 2) reqClear = (uint16_t)((d[1] << 8) | (n >= 3 ? d[2] : 0));
+        // 続けて届いても取りこぼさないよう、上書きせずに足していく (サイトは文字盤と効果音を続けて消すことがある)
+        if (n >= 2 && d[1] == KIND_FACE) reqClear.fetch_or(1);
+        else if (n >= 2 && d[1] == KIND_SOUND) reqClear.fetch_or(2);
+        else if (n >= 3 && d[1] == KIND_APP && d[2] < APP_SLOTS) reqClear.fetch_or((uint16_t)(4u << d[2]));
         break;
       case CMD_SET_THEME:
         if (n >= 19 && !reqTheme) {
@@ -789,34 +806,87 @@ static int listSlot(int n) {
   return -1;
 }
 
+// 一覧の 0 番目は「設定」で、そのあとにアプリが並ぶ
+static int         listCount() { return appCount() + 1; }
+static const char* listName(int i) { return i == 0 ? "設定" : apps[listSlot(i - 1)].name.c_str(); }
+
 static void drawList() {
-  int count = appCount();
+  int count = listCount();
   frame.fillScreen(rgb(theme.bg));
   frame.setTextDatum(middle_center);
   frame.setFont(&fonts::lgfxJapanGothic_24);
   frame.setTextColor(rgb(theme.muted));
   frame.drawString("アプリ", W / 2, 70);
-  if (count == 0) {
-    frame.setTextColor(rgb(theme.fg));
-    frame.drawString("まだ入っていません", W / 2, H / 2 - 16);
-    frame.setTextColor(rgb(theme.muted));
-    frame.drawString("サイトから送ってください", W / 2, H / 2 + 24);
-  } else {
-    if (listIndex >= count) listIndex = 0;
-    int first = constrain(listIndex - LIST_ROWS / 2, 0, max(0, count - LIST_ROWS));
-    frame.setFont(&fonts::lgfxJapanGothic_28);
-    for (int row = 0; row < LIST_ROWS && first + row < count; row++) {
-      int  y   = LIST_TOP + row * LIST_ROW;
-      bool sel = first + row == listIndex;
-      if (sel) frame.fillRoundRect(70, y, W - 140, LIST_ROW - 8, 14, rgb(theme.accent));
-      frame.setTextColor(rgb(sel ? theme.bg : theme.fg));
-      frame.drawString(apps[listSlot(first + row)].name.c_str(), W / 2, y + (LIST_ROW - 8) / 2);
-    }
-    frame.setFont(&fonts::lgfxJapanGothic_20);
-    frame.setTextColor(rgb(theme.muted));
-    frame.drawString("A 次へ   B 起動", W / 2, H - 50);
+  if (listIndex >= count) listIndex = 0;
+  int first = constrain(listIndex - LIST_ROWS / 2, 0, max(0, count - LIST_ROWS));
+  frame.setFont(&fonts::lgfxJapanGothic_28);
+  for (int row = 0; row < LIST_ROWS && first + row < count; row++) {
+    int  y   = LIST_TOP + row * LIST_ROW;
+    bool sel = first + row == listIndex;
+    if (sel) frame.fillRoundRect(70, y, W - 140, LIST_ROW - 8, 14, rgb(theme.accent));
+    frame.setTextColor(rgb(sel ? theme.bg : first + row == 0 ? theme.muted : theme.fg));
+    frame.drawString(listName(first + row), W / 2, y + (LIST_ROW - 8) / 2);
   }
+  frame.setFont(&fonts::lgfxJapanGothic_20);
+  frame.setTextColor(rgb(theme.muted));
+  if (count == 1) frame.drawString("アプリはサイトから送れます", W / 2, H / 2 + 30);
+  frame.drawString("A 次へ   B 決定", W / 2, H - 50);
   frame.pushSprite(0, 0);
+}
+
+// ---- 設定画面: 明るさ・音量は左半分のタップで下げ、右半分で上げる。振動は行のタップで切り替え ----
+static const int SET_Y[3] = {150, 233, 316}, SET_MINUS = 95, SET_PLUS = 371, SET_HALF = 40;
+
+static void drawStepRow(int y, const char* label, int level) {
+  frame.setFont(&fonts::lgfxJapanGothic_20);
+  frame.setTextColor(rgb(theme.muted));
+  frame.drawString(label, W / 2, y - 26);
+  for (int x : {SET_MINUS, SET_PLUS}) {
+    frame.fillCircle(x, y, 32, rgb(theme.surface));
+    frame.fillRect(x - 12, y - 2, 24, 5, rgb(theme.fg));
+    if (x == SET_PLUS) frame.fillRect(x - 2, y - 12, 5, 24, rgb(theme.fg));
+  }
+  for (int i = 0; i < 5; i++)  // 5 段の目盛り
+    frame.fillRoundRect(150 + i * 34, y - 2, 28, 20, 5, rgb(i < level ? theme.accent : theme.surface));
+}
+
+static void drawSettings() {
+  frame.fillScreen(rgb(theme.bg));
+  frame.setTextDatum(middle_center);
+  frame.setFont(&fonts::lgfxJapanGothic_24);
+  frame.setTextColor(rgb(theme.muted));
+  frame.drawString("設定", W / 2, 70);
+  drawStepRow(SET_Y[0], "明るさ", brightLevel);
+  drawStepRow(SET_Y[1], volumeLevel ? "音量" : "音量 (消音)", volumeLevel);
+  frame.fillRoundRect(120, SET_Y[2] - 30, W - 240, 60, 30, rgb(vibrateOn ? theme.accent : theme.surface));
+  frame.setFont(&fonts::lgfxJapanGothic_24);
+  frame.setTextColor(rgb(vibrateOn ? theme.bg : theme.muted));
+  frame.drawString(vibrateOn ? "振動 ON" : "振動 OFF", W / 2, SET_Y[2]);
+  frame.setFont(&fonts::lgfxJapanGothic_20);
+  frame.setTextColor(rgb(theme.muted));
+  frame.drawString("タッチで変更   B 戻る", W / 2, H - 50);
+  frame.pushSprite(0, 0);
+}
+
+static void settingsTap(int x, int y) {
+  int row = -1;
+  for (int i = 0; i < 3; i++)
+    if (abs(y - SET_Y[i]) <= SET_HALF) row = i;
+  if (row < 0) return;
+  int step = x < W / 2 ? -1 : 1;
+  if (row == 0) {
+    brightLevel = constrain(brightLevel + step, 1, 5);
+    prefs.putUChar("bright", brightLevel);
+  } else if (row == 1) {
+    volumeLevel = constrain(volumeLevel + step, 0, 5);
+    prefs.putUChar("volume", volumeLevel);
+  } else {
+    vibrateOn = !vibrateOn;
+    prefs.putBool("vibrate", vibrateOn);
+  }
+  applySettings();
+  if (row == 1) M5.Speaker.tone(1760, 80, 0, true);  // 変えた音量で鳴らして確かめられるようにする
+  if (row == 2) buzz(80);
 }
 
 // 画面幅に合わせて折り返しながら文章を描く
@@ -898,21 +968,27 @@ static void handleRequests() {
   if (reqPlay.exchange(false)) playSound();
   if (reqBuzz.exchange(false)) buzz(250);
   if (uint16_t c = reqClear.exchange(0)) {
-    uint8_t kind = c >> 8, slot = c & 0xFF;
-    if (kind == KIND_FACE) {
+    if (c & 1) {
       LittleFS.remove(FACE_PATH);
       hasFace = false;
-    } else if (kind == KIND_SOUND) {
+    }
+    if (c & 2) {
       LittleFS.remove(SOUND_PATH);
       adoptSound(nullptr, 0);
-    } else if (kind == KIND_APP && slot < APP_SLOTS) {
+    }
+    bool appsChanged = false;
+    for (int slot = 0; slot < APP_SLOTS; slot++) {
+      if (!(c & (4u << slot))) continue;
       if (mode == MODE_APP && appSlot == slot) goHome();
       LittleFS.remove(appPath(slot).c_str());
       LittleFS.remove(dataPath(slot).c_str());
       scanApp(slot);
-      publishApps();
+      appsChanged = true;
     }
-    buzz(100);
+    if (appsChanged) {
+      publishApps();
+      buzz(100);  // テーマの転送で消すときは震えない (色が届いたときに画面が変わる)
+    }
     redraw = true;
   }
   if (reqHome.exchange(false)) goHome();
@@ -924,13 +1000,15 @@ static void handleRequests() {
 void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
-  M5.Display.setBrightness(160);
-  M5.Speaker.setVolume(160);
   W = M5.Display.width();
   H = M5.Display.height();
 
   prefs.begin("face", false);
   tzOffsetMin = prefs.getShort("tz", 540);
+  brightLevel = constrain((int)prefs.getUChar("bright", 3), 1, 5);
+  volumeLevel = constrain((int)prefs.getUChar("volume", 4), 0, 5);
+  vibrateOn   = prefs.getBool("vibrate", true);
+  applySettings();
   loadTheme();
   applyTimezone();
   if (M5.Rtc.isEnabled()) M5.Rtc.setSystemTimeFromRtc();  // RTC は UTC で持つ
@@ -991,16 +1069,18 @@ void loop() {
         break;
 
       case MODE_LIST: {
-        int count = appCount();
-        if (clickA && count) listIndex = (listIndex + 1) % count, redraw = true, modeSince = millis();
-        if (tap && count) {  // 行をタップしたらそのアプリを起動する
+        int count = listCount();
+        if (clickA) listIndex = (listIndex + 1) % count, redraw = true, modeSince = millis();
+        if (tap) {  // 行をタップしたらそれを開く
           int first = constrain(listIndex - LIST_ROWS / 2, 0, max(0, count - LIST_ROWS));
           int row   = (touch.y - LIST_TOP) / LIST_ROW;
           if (touch.y >= LIST_TOP && row < LIST_ROWS && first + row < count) listIndex = first + row, clickB = true;
         }
-        if (clickB && count) {
-          launchApp(listSlot(listIndex));
-        } else if (clickB || millis() - modeSince > 20000) {
+        if (clickB && listIndex == 0) {
+          setMode(MODE_SETTINGS);
+        } else if (clickB) {
+          launchApp(listSlot(listIndex - 1));
+        } else if (millis() - modeSince > 20000) {
           goHome();
         } else if (redraw) {
           drawList();
@@ -1009,11 +1089,24 @@ void loop() {
         break;
       }
 
+      case MODE_SETTINGS:
+        if (tap) settingsTap(touch.x, touch.y), redraw = true, modeSince = millis();
+        if (clickB) {
+          listIndex = 0;
+          setMode(MODE_LIST);
+        } else if (millis() - modeSince > 30000) {
+          goHome();
+        } else if (redraw) {
+          drawSettings();
+          redraw = false;
+        }
+        break;
+
       case MODE_APP: {
         bool ok = true;
         if (clickA) ok = app.button("A");
         if (ok && clickB) ok = app.button("B");
-        if (ok && tap) ok = app.touch(touch.x, touch.y);
+        if (ok && touch.wasPressed()) ok = app.touch(touch.x, touch.y);  // 触れた瞬間に渡す (離すまで待つと、指が動いたり長く触れたりした分を取りこぼす)
         if (ok && (redraw || millis() - lastFrame >= (uint32_t)(1000 / app.fps()))) {
           lastFrame = millis();
           redraw    = false;
